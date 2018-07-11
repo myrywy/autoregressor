@@ -243,6 +243,16 @@ class BestInterpretationFinder:
         new_top_interpretations_probabilites, (top_interpretations, top_meanings) = \
             self._top_k_from_2d_tensor(new_interpretations_probabilities, self.variants_to_follow)
 
+        # może się zdarzyć, że nie ma żadnych znanych, pasujących do tekstu interpretacji bieżącego słowa, 
+        # albo jest ich mniej niż liczba interpretacji do trakowania. Wtedy trzeba wrócić do wartości prawdopodobieństwa
+        # z poprzedniej iteracji i dodać zerowe ID znaczenia do interpretacji. Na koniec jeszcze trzeba odfiltrować zdublowane interpretacje
+
+        is_unknown = tf.cast(tf.equal(new_top_interpretations_probabilites, 0.0), tf.int32)
+        top_meanings = top_meanings * (1 - is_unknown)
+        new_top_interpretations_probabilites = tf.reshape(new_top_interpretations_probabilites, (-1, 1)) + \
+                tf.reshape(tf.cast(is_unknown, tf.float32), (-1, 1)) * state.interpretations_probabilities
+
+
         new_interpretations = tf.gather(state.interpretations, top_interpretations, name="pick_best_interpretations")
 
         # tu jest ważne założenie, że id znaczenia to jego indeks w warstwie wyjściowej Modelu Języka
@@ -411,6 +421,115 @@ def test__mask_senses_matching_words():
         print(sess.run(mask))
 
 
+def test__step_2_unknown():
+    # końcepcja jest taka:
+    # zapisać kilka sekwencji w postaci numerów tokenów 
+    # i prawdopodobieństwa odpowiadające kolejnym znaczeniom i mappingi ze znaczenia na kolejne znaczenie
+    # a potem przerabiać nr-y tokenów na one hot embeddingsy i w call zaimplementować ojejku, to się robi skomplikowane
+    no_of_meanings = 5
+    class MockRnn(tf.nn.rnn_cell.RNNCell):
+        def __init__(self, number_of_meanings, size_of_input_embedding):
+            self.number_of_meanings = number_of_meanings
+            self.size_of_input_embedding = size_of_input_embedding
+
+        def call(self, input, state):
+            output = tf.one_hot(state, self.size_of_input_embedding)
+            return output, state+1
+
+    mock_language_model = MockRnn(no_of_meanings, no_of_meanings+1)
+    lm_state = tf.constant([3, 5,]) # w takiej konfiguracji tylko pierwsza interpretacja zyska na prawdopodobienstwie
+    # bo w przypadku drugiej prawdopodobieństwo wszystkich znaczeń uprawdopodabnianiych przez tokeny jest zerowe
+
+    interpretations_probabilities = tf.constant([
+        [0.6],
+        [0.2],
+    ])
+    tokenization_variants = tf.constant([
+        [1,2,3],
+    ])
+    index_of_tokenization_variant = tf.constant([
+        0,
+        0,
+    ])
+    position_in_tokenization_variants = tf.constant([
+        1,
+        1,
+    ])
+    len_of_tokenization_variants = tf.constant([
+        3, 
+        3,
+    ])
+    tokens = list("abc")
+    tokens_senses = [
+        [1,2],
+        [],
+        [5],
+    ]
+
+    interpretations = tf.constant(
+        [
+            [1, ],#0, 0,],
+            [2, ],#0, 0,],
+        ]
+    )
+
+    senses_dict = defaultdict(list, zip(tokens, tokens_senses))
+    class S:
+        def _get_possible_meanings_ids(self, token):
+            return senses_dict[token]
+        meanings_count = no_of_meanings
+    tokens_meanings_lookup = BestInterpretationFinder._get_token_meanings_mask(S(), tokens)
+
+
+    finder = BestInterpretationFinder(
+                 mock_language_model,
+                 variants_to_follow=2
+                 )
+    def _get_possible_meanings_ids(self, token):
+            return senses_dict[token]
+    finder._get_possible_meanings_ids = _get_possible_meanings_ids
+    finder.meanings_count = no_of_meanings
+    
+    current_state = InterpretationSearchState(
+            tokenization_variants, 
+            len_of_tokenization_variants,
+            position_in_tokenization_variants,
+            index_of_tokenization_variant, 
+            interpretations, 
+            interpretations_probabilities, 
+            lm_state
+        )
+
+    expected_index_of_tokenization_variant = np.array([
+        0,
+        0,
+    ])
+    expected_position_in_tokenization_variants = np.array([
+        2,
+        2,
+    ])
+    expected_interpretations = np.array([
+        [1, 0],
+        [2, 0],
+    ])
+    expected_interpretations_probabilities = np.array([
+        [0.6],
+        [0.2],
+    ], dtype=np.float32)
+
+    with tf.Session() as sess:
+        new_state = sess.run(finder.step(current_state, tokens_meanings_lookup))
+
+    print(new_state)
+
+    np.testing.assert_equal(expected_index_of_tokenization_variant, new_state.index_of_tokenization_variant, "tokenization variant mismatch")
+    np.testing.assert_equal(expected_position_in_tokenization_variants, new_state.position_in_tokenization_variants, "position in tokenization mismatch")
+
+    #np.testing.assert_equal(expected_interpretations, new_state.interpretations, "interpretations mismatch")
+    np.testing.assert_almost_equal(expected_interpretations_probabilities, new_state.interpretations_probabilities, 7, "interpretations propabilities mismatch")
+
+
+
 def test__step_1_no_swap():
     # końcepcja jest taka:
     # zapisać kilka sekwencji w postaci numerów tokenów 
@@ -500,12 +619,12 @@ def test__step_1_no_swap():
     ])
     expected_interpretations = np.array([
         [1, 3],
-        [2, 0],
+        [1, 4],
     ])
     expected_interpretations_probabilities = np.array([
-        1.6,
-        0.2,
-    ])
+        [1.6],
+        [0.6],
+    ], dtype=np.float32)
 
     with tf.Session() as sess:
         new_state = sess.run(finder.step(current_state, tokens_meanings_lookup))
@@ -516,7 +635,7 @@ def test__step_1_no_swap():
     np.testing.assert_equal(expected_position_in_tokenization_variants, new_state.position_in_tokenization_variants, "position in tokenization mismatch")
 
     np.testing.assert_equal(expected_interpretations, new_state.interpretations, "interpretations mismatch")
-    np.testing.assert_equal(expected_interpretations_probabilities, new_state.interpretations_probabilities, "interpretations propabilities mismatch")
+    np.testing.assert_almost_equal(expected_interpretations_probabilities, new_state.interpretations_probabilities, 7, "interpretations propabilities mismatch")
 
 
 def test__step():
@@ -603,12 +722,12 @@ def test__step():
             lm_state
         )
 
-    expected_index_of_tokenization_variant = tf.constant([
+    expected_index_of_tokenization_variant = np.array([
         2,
         1,
         0,
     ])
-    expected_position_in_tokenization_variants = tf.constant([
+    expected_position_in_tokenization_variants = np.array([
         3,
         3,
         3,
