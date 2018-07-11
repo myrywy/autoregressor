@@ -157,6 +157,7 @@ class BestInterpretationFinder:
     
     @staticmethod
     def _top_k_from_2d_tensor(tensor2d, k):
+        """Find top k values of 2D tensor. Return values themselves and vectors their first and second indices."""
         flat_tensor = tf.reshape(tensor2d, (-1,))
         top_values, top_indices = tf.nn.top_k(flat_tensor, k)
         top_index1 = top_indices // tf.shape(tensor2d)[1]
@@ -177,14 +178,16 @@ class BestInterpretationFinder:
             body=self.step,
             loop_vars=initial_state)
 
-    def _interpretations_done(self, state):
-        state = InterpretationSearchState(state)
-        return state.position_in_tokenization_variants > state.len_of_tokenization_variants
+    @staticmethod
+    def _interpretations_done(state):
+        state = InterpretationSearchState(*state)
+        return state.position_in_tokenization_variants >= \
+            tf.gather(state.len_of_tokenization_variants, state.index_of_tokenization_variant)
 
     def step(self, state, tokens_meanings_lookup):
         # wszystkie wymiary w komentarzach ponizej podano z pominieciem pierwszego (batch)
         # zakładamy na razie, że zawsze batch size = 1, a wewnętrznie w language modelu
-        state = InterpretationSearchState(state)
+        state = InterpretationSearchState(*state)
         # tokenisation_variants (<variants_to_follow>, <sequence_length>) - identyfikatory slow lub fraz, np. 
         # "He is in the white house" można podzielić na ["he"(1), "is"(2), "in"(3), "the"(4), "white"(5), "house"(6)] 
         # lub ["he"(1), "is"(2), "in"(3), "the white house"(7)] więc tokenisation_variants miałoby postac
@@ -203,15 +206,29 @@ class BestInterpretationFinder:
         # tokens_meanings_lookup (<liczba roznych tokenow>, <maksymalna liczba znaczen slowa>)
         #
         # interpretations_probabelities (<liczba interpretacji>,) - dla każdej interpretacji przechowuje logit prawdopodobieństwa tej interpretacji
-        next_word_probabilities, new_lm_states = self.language_model.call(state.interpretations, state.lm_state)
+        
+        #previous_meanings = state.interpretations[:,-1]
+        previous_meanings = tf.gather(state.interpretations, state.position_in_tokenization_variants, name="pick_previously_guessed_word")
+        next_word_probabilities, new_lm_states = \
+            self.language_model.call(
+                previous_meanings, 
+                state.lm_state
+                )
         position_in_tokenization_variants = state.position_in_tokenization_variants + 1
 
+        print("next_word_probabilities")
+        print(next_word_probabilities)
         
+        print("state.interpretations_probabilities")
+        print(state.interpretations_probabilities)
+
         # produce array of probabilites of dims - (interpretation, next word), and values being probabilites of interpratation if continued by next word
         # uses broadcasting to add current intepretation probability to the probability of every word in vocab being next word in this interpretation 
-        new_interpretations_probabilities = next_word_probabilities + tf.expand_dims(state.interpretations_probabilities, 1)
+        new_interpretations_probabilities = next_word_probabilities + state.interpretations_probabilities
+        print("new_interpretations_probabilities")
+        print(new_interpretations_probabilities)
 
-        next_word_probabilities = self._mask_senses_matching_words(
+        new_interpretations_probabilities = self._mask_senses_matching_words(
             new_interpretations_probabilities, 
             state.tokenization_variants, 
             state.index_of_tokenization_variant, 
@@ -220,26 +237,30 @@ class BestInterpretationFinder:
 
         # TODO: Gdzieś trzeba wstawić 0 jako rozwiniecie interpretacji, jeśli prawdopodobieństwa wszystkich słów są zerem 
         # bo nie odnaleziono zadnego mozliwego znaczenia slowa.
+        print("new_interpretations_probabilities")
+        print(new_interpretations_probabilities)
 
         new_top_interpretations_probabilites, (top_interpretations, top_meanings) = \
             self._top_k_from_2d_tensor(new_interpretations_probabilities, self.variants_to_follow)
 
-        new_interpretations = tf.gather(state.interpretations, top_interpretations)
+        new_interpretations = tf.gather(state.interpretations, top_interpretations, name="pick_best_interpretations")
 
         # tu jest ważne założenie, że id znaczenia to jego indeks w warstwie wyjściowej Modelu Języka
         # i jeszcze kolejne zalożenie, że wektor wyjściowy za każdym razem rośnie o 1
-        new_interpretations = tf.concat((new_interpretations, [top_meanings]), axis=1) 
-        new_len_of_tokenization_variants = tf.gather(len_of_tokenization_variants, top_interpretations)
-        new_position_in_tokenization_variants = tf.gather(position_in_tokenization_variants, top_interpretations)
-        new_index_of_tokenization_variant = tf.gather(index_of_tokenization_variant, top_interpretations)
+        new_interpretations = tf.concat((new_interpretations, tf.reshape(top_meanings, (self.variants_to_follow, 1))), axis=1) 
+        new_len_of_tokenization_variants = tf.gather(state.len_of_tokenization_variants, top_interpretations, name="pick_len_of_tekenization_for_best_interpretations")
+        new_position_in_tokenization_variants = tf.gather(position_in_tokenization_variants, top_interpretations, name="pick_position_for_best_interpretations")
+        new_index_of_tokenization_variant = tf.gather(state.index_of_tokenization_variant, top_interpretations, name="pick_tokenization_for_best_interpretations")
 
-        new_state = tokenization_variants, \
-                    new_len_of_tokenization_variants, \
-                    new_position_in_tokenization_variants, \
-                    new_index_of_tokenization_variant, \
-                    new_interpretations, \
-                    new_top_interpretations_probabilites, \
-                    new_lm_states
+        new_state = InterpretationSearchState(
+            state.tokenization_variants, 
+            new_len_of_tokenization_variants, 
+            new_position_in_tokenization_variants, 
+            new_index_of_tokenization_variant, 
+            new_interpretations, 
+            new_top_interpretations_probabilites, 
+            new_lm_states
+        )
         return new_state
 
 
@@ -282,6 +303,54 @@ def test__get_token_meanings_mask():
          [6, 9]]
          ))
     return r
+
+
+def test__interpretations_done():
+    len_of_tokenization_variants = tf.constant([3,4,5])
+    index_of_tokenization_variant = tf.constant([0,1,1,2])
+    test_cases_position_in_tokenization_variants = [
+        tf.constant([1,2,2,3]),
+        tf.constant([3,4,4,5]),
+        tf.constant([3,3,4,5]),
+        tf.constant([0,3,4,5]),
+        tf.constant([0,3,4,4]),
+        tf.constant([0,3,2,4]),
+        tf.constant([0,4,2,4]),
+        tf.constant([3,4,2,4]),
+        tf.constant([1,4,2,5]),
+    ]
+
+    expected_results = np.array([
+        [0, 0, 0, 0],
+        [1, 1, 1, 1],
+        [1, 0, 1, 1],
+        [0, 0, 1, 1],
+        [0, 0, 1, 0],
+        [0, 0, 0, 0],
+        [0, 1, 0, 0],
+        [1, 1, 0, 0],
+        [0, 1, 0, 1],
+    ], dtype=np.bool)
+
+    test_cases_state = \
+    [
+        InterpretationSearchState(
+            "tokenization_variants", 
+            len_of_tokenization_variants,
+            position_in_tokenization_variants,
+            index_of_tokenization_variant, 
+            "interpretations", 
+            "interpretations_probabilities", 
+            "lm_state"
+        ) for position_in_tokenization_variants in test_cases_position_in_tokenization_variants
+    ]
+
+    test_cases_computed_done = [BestInterpretationFinder._interpretations_done(case) for case in test_cases_state]
+
+    with tf.Session() as sess:
+        results = sess.run(test_cases_computed_done)
+
+    np.testing.assert_equal(np.array(results), expected_results)
 
 
 def test__mask_senses_matching_words():
@@ -340,6 +409,219 @@ def test__mask_senses_matching_words():
             tokens_meanings_lookup)
     with tf.Session() as sess:
         print(sess.run(mask))
+
+
+def test__step_1_no_swap():
+    # końcepcja jest taka:
+    # zapisać kilka sekwencji w postaci numerów tokenów 
+    # i prawdopodobieństwa odpowiadające kolejnym znaczeniom i mappingi ze znaczenia na kolejne znaczenie
+    # a potem przerabiać nr-y tokenów na one hot embeddingsy i w call zaimplementować ojejku, to się robi skomplikowane
+    no_of_meanings = 5
+    class MockRnn(tf.nn.rnn_cell.RNNCell):
+        def __init__(self, number_of_meanings, size_of_input_embedding):
+            self.number_of_meanings = number_of_meanings
+            self.size_of_input_embedding = size_of_input_embedding
+
+        def call(self, input, state):
+            output = tf.one_hot(state, self.size_of_input_embedding)
+            return output, state+1
+
+    mock_language_model = MockRnn(no_of_meanings, no_of_meanings+1)
+    lm_state = tf.constant([3, 5,]) # w takiej konfiguracji tylko pierwsza interpretacja zyska na prawdopodobienstwie
+    # bo w przypadku drugiej prawdopodobieństwo wszystkich znaczeń uprawdopodabnianiych przez tokeny jest zerowe
+
+    interpretations_probabilities = tf.constant([
+        [0.6],
+        [0.2],
+    ])
+    tokenization_variants = tf.constant([
+        [1,2,3],
+    ])
+    index_of_tokenization_variant = tf.constant([
+        0,
+        0,
+    ])
+    position_in_tokenization_variants = tf.constant([
+        1,
+        1,
+    ])
+    len_of_tokenization_variants = tf.constant([
+        3, 
+        3,
+    ])
+    tokens = list("abc")
+    tokens_senses = [
+        [1,2],
+        [3,4],
+        [5],
+    ]
+
+    interpretations = tf.constant(
+        [
+            [1, ],#0, 0,],
+            [2, ],#0, 0,],
+        ]
+    )
+
+    senses_dict = defaultdict(list, zip(tokens, tokens_senses))
+    class S:
+        def _get_possible_meanings_ids(self, token):
+            return senses_dict[token]
+        meanings_count = no_of_meanings
+    tokens_meanings_lookup = BestInterpretationFinder._get_token_meanings_mask(S(), tokens)
+
+
+    finder = BestInterpretationFinder(
+                 mock_language_model,
+                 variants_to_follow=2
+                 )
+    def _get_possible_meanings_ids(self, token):
+            return senses_dict[token]
+    finder._get_possible_meanings_ids = _get_possible_meanings_ids
+    finder.meanings_count = no_of_meanings
+    
+    current_state = InterpretationSearchState(
+            tokenization_variants, 
+            len_of_tokenization_variants,
+            position_in_tokenization_variants,
+            index_of_tokenization_variant, 
+            interpretations, 
+            interpretations_probabilities, 
+            lm_state
+        )
+
+    expected_index_of_tokenization_variant = np.array([
+        0,
+        0,
+    ])
+    expected_position_in_tokenization_variants = np.array([
+        2,
+        2,
+    ])
+    expected_interpretations = np.array([
+        [1, 3],
+        [2, 0],
+    ])
+    expected_interpretations_probabilities = np.array([
+        1.6,
+        0.2,
+    ])
+
+    with tf.Session() as sess:
+        new_state = sess.run(finder.step(current_state, tokens_meanings_lookup))
+
+    print(new_state)
+
+    np.testing.assert_equal(expected_index_of_tokenization_variant, new_state.index_of_tokenization_variant, "tokenization variant mismatch")
+    np.testing.assert_equal(expected_position_in_tokenization_variants, new_state.position_in_tokenization_variants, "position in tokenization mismatch")
+
+    np.testing.assert_equal(expected_interpretations, new_state.interpretations, "interpretations mismatch")
+    np.testing.assert_equal(expected_interpretations_probabilities, new_state.interpretations_probabilities, "interpretations propabilities mismatch")
+
+
+def test__step():
+    # końcepcja jest taka:
+    # zapisać kilka sekwencji w postaci numerów tokenów 
+    # i prawdopodobieństwa odpowiadające kolejnym znaczeniom i mappingi ze znaczenia na kolejne znaczenie
+    # a potem przerabiać nr-y tokenów na one hot embeddingsy i w call zaimplementować ojejku, to się robi skomplikowane
+    
+    class MockRnn(tf.nn.rnn_cell.RNNCell):
+        def __init__(self, number_of_meanings, size_of_input_embedding):
+            self.number_of_meanings = number_of_meanings
+            self.size_of_input_embedding = size_of_input_embedding
+
+        def call(self, input, state):
+            output = tf.one_hot(state, self.size_of_input_embedding)
+            return output, state+1
+
+    mock_language_model = MockRnn(9, 10)
+    lm_state = tf.constant([3, 4, 5])
+
+    interpretations_probabilities = tf.constant([
+        [0.3],
+        [0.5],
+        [0.7],
+    ])
+    tokenization_variants = tf.constant([
+        [1,2,3,4,5,0,0],
+        [1,2,6,0,0,0,0],
+        [1,2,4,4,5,7,8],
+    ])
+    index_of_tokenization_variant = tf.constant([
+        0,
+        1,
+        2,
+    ])
+    position_in_tokenization_variants = tf.constant([
+        2,
+        2,
+        2,
+    ])
+    len_of_tokenization_variants = tf.constant([5, 3, 7])
+    tokens = list("abcdef")
+    tokens_senses = [
+        [1,2],
+        [3],
+        [], # TODO: sprawdzic koniecznie interpretacje, w ktorej trzeba zgadnac znaczenie tego tokenu
+        [4],
+        [5,6],
+        [7,8,9]
+    ]
+
+    interpretations = tf.constant(
+        [
+            [1, 3, ],#0, 0, 0, 0, 0],
+            [2, 3, ],#0, 0, 0, 0, 0],
+            [1, 3, ],#0, 0, 0, 0, 0],
+        ]
+    )
+
+    senses_dict = defaultdict(list, zip(tokens, tokens_senses))
+    class S:
+        def _get_possible_meanings_ids(self, token):
+            return senses_dict[token]
+        meanings_count = 9
+    tokens_meanings_lookup = BestInterpretationFinder._get_token_meanings_mask(S(), tokens)
+
+
+    finder = BestInterpretationFinder(
+                 mock_language_model,
+                 variants_to_follow=3
+                 )
+    def _get_possible_meanings_ids(self, token):
+            return senses_dict[token]
+    finder._get_possible_meanings_ids = _get_possible_meanings_ids
+    finder.meanings_count = 9
+    
+    current_state = InterpretationSearchState(
+            tokenization_variants, 
+            len_of_tokenization_variants,
+            position_in_tokenization_variants,
+            index_of_tokenization_variant, 
+            interpretations, 
+            interpretations_probabilities, 
+            lm_state
+        )
+
+    expected_index_of_tokenization_variant = tf.constant([
+        2,
+        1,
+        0,
+    ])
+    expected_position_in_tokenization_variants = tf.constant([
+        3,
+        3,
+        3,
+    ])
+
+    with tf.Session() as sess:
+        new_state = sess.run(finder.step(current_state, tokens_meanings_lookup))
+
+    print(new_state)
+
+    np.testing.assert_equal(expected_index_of_tokenization_variant, new_state.index_of_tokenization_variant)
+    np.testing.assert_equal(expected_position_in_tokenization_variants, new_state.position_in_tokenization_variants)
+
 
 
 def test__top_k_from_2d_tensor():
