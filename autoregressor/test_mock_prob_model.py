@@ -53,6 +53,54 @@ def test_mock_model():
     assert new_state == (2, approx([1,2,0]))
 
 
+def test_mock_model_first_dim_batch():
+    probabilities = {
+        (0,0,0):[0.5, 0.5, 0.0], # początek historii
+
+        (1,0,0):[0.6, 0.4, 0.0], # a
+        (2,0,0):[0.0, 0.0, 1.0], # b
+        
+        (1,1,0):[0.6, 0.4, 0.0], # aa
+        (1,2,0):[0.95, 0.05, 0.0], # ab
+        (2,1,0):[0.0, 0.0, 1.0], # ba
+        (2,2,0):[0.0, 0.0, 1.0], # bb
+        }
+    probabilities = {tuple((i,) for i in k):v for k, v in probabilities.items()}
+
+    model = mock_model(probabilities, first_dim_is_batch=True)
+
+    initial_state = (tf.constant(0), tf.constant([[[0],[0],[0]]]))
+    with tf.Session() as sess:
+        pr_estimation, new_state = sess.run(model(tf.constant([[1]]), initial_state))
+
+    assert pr_estimation == approx([[0.6,0.4,0.0]])
+    assert new_state == (1, approx([[[1],[0],[0]]]))
+
+
+    initial_state = (tf.constant(0), tf.constant([[[0],[0],[0]]]))
+    with tf.Session() as sess:
+        pr_estimation, new_state = sess.run(model(tf.constant([[2]]), initial_state))
+
+    assert pr_estimation == approx([[0.0,0.0,1.0]])
+    assert new_state == (1, approx([[[2],[0],[0]]]))
+
+
+    initial_state = (tf.constant(1), tf.constant([[[1],[0],[0]]]))
+    with tf.Session() as sess:
+        pr_estimation, new_state = sess.run(model(tf.constant([[1]]), initial_state))
+
+    assert pr_estimation == approx([[0.6,0.4,0.0]])
+    assert new_state == (2, approx([[[1],[1],[0]]]))
+
+
+    initial_state = (tf.constant(1), tf.constant([[[1],[0],[0]]]))
+    with tf.Session() as sess:
+        pr_estimation, new_state = sess.run(model(tf.constant([[2]]), initial_state))
+
+    assert pr_estimation == approx([[0.95,0.05,0.0]])
+    assert new_state == (2, approx([[[1],[2],[0]]]))
+
+
 def test_mock_model_layer_step():
     probabilities = {
         (0,0,0):[0.5, 0.5, 0.0], # początek historii
@@ -147,7 +195,7 @@ def test_mock_model_layer_step_deeper_input():
     assert new_state == (2, approx([[1,1],[2,2],[0,0]]))
 
 
-#@pytest.mark.skipif()
+
 def test_mock_model_layer_as_rnn():
     probabilities = {
         (0,0,0):[0.5, 0.5, 0.0], # początek historii
@@ -219,3 +267,42 @@ def test_naive_lookup_op():
     with tf.Session() as sess:
         for i in range(len(e_2_4)):
             assert sess.run(l_2_4(tf.constant(k2[i]))) == approx(e_2_4[i])
+
+
+
+def test_naive_lookup_op_batched():
+    k1 = [9,8,7]
+    k2 = [[1,2,3],[5,6,7]]
+    d1_keys = tf.constant(k1)
+    d2_keys = tf.constant(k2)
+    vals_1 = tf.constant([0.3,0.2,0.3])
+    vals_2 = tf.constant([[0.3,1.1],[0.2,1.2],[0.3,1.3]])
+
+    vals_3 = tf.constant([0.3,0.2])
+    vals_4 = tf.constant([[0.3,1.1],[0.2,1.2]])
+
+    l_1_1 = naive_lookup_op(d1_keys, vals_1, first_dim_is_batch=True)
+    l_1_2 = naive_lookup_op(d1_keys, vals_2, first_dim_is_batch=True)
+    
+    l_2_3 = naive_lookup_op(d2_keys, vals_3, first_dim_is_batch=True)
+    l_2_4 = naive_lookup_op(d2_keys, vals_4, first_dim_is_batch=True)
+
+    e_1_1 = [0.3,0.2,0.3]
+    e_1_2 = [[0.3,1.1],[0.2,1.2],[0.3,1.3]]
+
+    e_2_3 = [0.3,0.2]
+    e_2_4 = [[0.3,1.1],[0.2,1.2]]
+
+    with tf.Session() as sess:
+        for i in range(len(e_1_1)):
+            assert sess.run(l_1_1(tf.constant([k1[i]]))) == approx([e_1_1[i]])
+
+        for i in range(len(e_1_2)):
+            assert sess.run(l_1_2(tf.constant([k1[i]]))) == approx([e_1_2[i]])
+
+        for i in range(len(e_2_3)):
+            assert sess.run(l_2_3(tf.constant([k2[i]]))) == approx([e_2_3[i]])
+
+    with tf.Session() as sess:
+        for i in range(len(e_2_4)):
+            assert sess.run(l_2_4(tf.constant([k2[i]]))) == approx([e_2_4[i]])

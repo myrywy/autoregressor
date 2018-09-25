@@ -1,8 +1,14 @@
 import numpy as np
-from mock_prob_model import mock_model
+import pytest
+from pytest import approx
+import mock_prob_model
+from mock_prob_model import MockModelLayer
 from autoregression_with_alternatives import *
+from tensorflow.python import debug as tf_debug
 
-def test_step_call():
+
+@pytest.fixture
+def probabilities():
     probabilities = {
         (0,0,0):[0.5, 0.5, 0.0], # początek historii
 
@@ -15,9 +21,14 @@ def test_step_call():
         (2,2,0):[0.0, 0.0, 1.0], # bb
         }
 
-    model = mock_model(probabilities)
+    probabilities = {tuple((i,) for i in k):v for k, v in probabilities.items()}
+    return probabilities
+
+@pytest.mark.skipif()
+def test_step_call(probabilities):
+    model = MockModelLayer(probabilities)
     regresor = AutoregressionWithAlternativePathsStep(2, model, 3)
-    zero_state = regresor.zero_state()
+    zero_state = regresor.zero_state(1, tf.int32)
     input = tf.zeros(1, tf.int32)
     output1, state1 = regresor.call(input, zero_state)
     output2, state2 = regresor.call(input, state1)
@@ -25,7 +36,62 @@ def test_step_call():
 
     with tf.Session() as sess:
         r_zero, r_s1, r_s2, r_s3, r_o1, r_o2, r_o3 = sess.run((zero_state, state1, state2, state3, output1, output2, output3))
-    print(state3)
+
+    print(r_s3)
+    assert r_s3.path_probabilities == approx([0.19, 0.18])
+
+
+@pytest.mark.skipif()
+def test_step_on_one_path(probabilities):
+    model = MockModelLayer(probabilities)
+    regresor = AutoregressionWithAlternativePathsStep(1, model, 3, False)
+    zero_state = regresor.zero_state(1, tf.int32)
+    input = tf.zeros(1, tf.int32)
+    output1, state1 = regresor.call(input, zero_state)
+    output2, state2 = regresor.call(input, state1)
+    output3, state3 = regresor.call(input, state2)
+
+    with tf.Session() as sess:
+        r_zero, r_s1, r_s2, r_s3, r_o1, r_o2, r_o3 = sess.run((zero_state, state1, state2, state3, output1, output2, output3))
+
+    print(r_s3)
+    assert r_s3.path_probabilities == approx([0.18])
+
+
+@pytest.mark.parametrize("target_step,path,expected_prob_dist", [
+    #(0, [0,0,0], [0.5, 0.5, 0.0]),
+    
+    (1, [[1],[0],[0]], [0.6, 0.4, 0.0]), # a W tym teście chcemy przewidzieć 2-gie słowo (o indeksie 0 bo indeksujemy od 0), wiemy, że pierwsze słowo (indeks=0) to "1". Oczekiwany rozkład prawdopodobieństwa 2-go słowa po słowniku to P(a_2=1, a_2=2, a_2=3)[0.6, 0.4, 0.0]
+    (1, [[2],[0],[0]], [0.0, 0.0, 1.0]), # b
+
+    (2, [[1],[1],[0]], [0.6, 0.4, 0.0]), # aa
+    (2, [[1],[2],[0]], [0.95, 0.05, 0.0]), # ab
+    (2, [[2],[1],[0]], [0.0, 0.0, 1.0]), # ba
+    (2, [[2],[2],[0]], [0.0, 0.0, 1.0]), # bb
+])
+def test__compute_next_step_probability(probabilities, target_step, path, expected_prob_dist):
+    
+    # To jest jednoczesnie numer słowa, który będzie feedowany do modelu prawd. war. Ma to sens bo jak chcemy przewidzieć
+    # n-te słowo to musimy podać n-1-sze przy założeniu, że resza informacji o kontekście jest przechowywana w stanie modelu pr. war.
+    current_autoregressor_step = tf.constant([target_step-1], name="init_step") 
+    # To jest to co (udajemy, że) do tej pory wygenerował autoregresor.
+
+    paths = tf.constant([path], name="init_path") 
+
+    # MockModel history 
+    # Jak chemy poznać n-te słowo
+    history_length = tf.constant(target_step-1, name="init_mock_history_length")
+    history = [*path]
+    history[target_step-1] = [0]
+    history = tf.constant([history], name="init_mock_history")
+    model_state = (history_length, history)
+
+    model = MockModelLayer(probabilities, first_dim_is_batch=True)
+    regresor = AutoregressionWithAlternativePathsStep(1, model, 3, False)
+    next_step_probability_dist, _ = regresor._compute_next_step_probability(current_autoregressor_step, paths, model_state)
+    with tf.Session() as sess:
+        r_prob_dist = sess.run(next_step_probability_dist)
+    assert r_prob_dist == approx([expected_prob_dist])
 
 
 def test__top_k_from_2d_tensor():

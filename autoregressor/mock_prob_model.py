@@ -29,22 +29,13 @@ def mock_model(hisory_to_probability_mapping, first_dim_is_batch=False):
 
     def mock_model_fn(input, state):
         history_length, history = state
-
-        # THIS IS DIRTY HACK to make tensorflow believe that history is a vector of size <batch size>
-        #if first_dim_is_batch:
-        #    print(history_length)
-        #    print(history)
-        #    history_length_vector = history_length
-        #    history_length = history_length[0]
+        history_length = tf.identity(history_length, name="history_length")
+        history = tf.identity(history, name="history")
 
         if first_dim_is_batch:
             history_now = tf.concat((history[:,0:history_length], tf.expand_dims(input,1), history[:,history_length + 1:]), axis=1, name="concat_past_future")
         else:
             history_now = tf.concat((history[0:history_length], [input], history[history_length + 1:]), axis=0, name="concat_past_future")
-        
-        # THIS IS DIRTY HACK to make tensorflow believe that history is a vector of size <batch size>
-        #if first_dim_is_batch:
-        #    history_length = history_length_vector
 
         new_state = (history_length + 1, history_now)
         output = naive_lookup_op(keys, values, first_dim_is_batch=first_dim_is_batch)(history_now)
