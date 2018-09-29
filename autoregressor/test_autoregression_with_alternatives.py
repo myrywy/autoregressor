@@ -24,6 +24,25 @@ def probabilities():
     probabilities = {tuple((i,) for i in k):v for k, v in probabilities.items()}
     return probabilities
 
+
+@pytest.fixture
+def probabilities_with_start_element():
+    """Czyli z elementem -1 na poczatku kazdej historii """
+    probabilities = {
+        (-1,0,0,0):[0.5, 0.5, 0.0], # początek historii
+
+        (-1,1,0,0):[0.6, 0.4, 0.0], # a
+        (-1,2,0,0):[0.0, 0.0, 1.0], # b
+        
+        (-1,1,1,0):[0.6, 0.4, 0.0], # aa
+        (-1,1,2,0):[0.95, 0.05, 0.0], # ab
+        (-1,2,1,0):[0.0, 0.0, 1.0], # ba
+        (-1,2,2,0):[0.0, 0.0, 1.0], # bb
+        }
+
+    probabilities = {tuple((i,) for i in k):v for k, v in probabilities.items()}
+    return probabilities
+
 @pytest.mark.skipif()
 def test_step_call(probabilities):
     model = MockModelLayer(probabilities)
@@ -41,20 +60,28 @@ def test_step_call(probabilities):
     assert r_s3.path_probabilities == approx([0.19, 0.18])
 
 
-@pytest.mark.skipif()
-def test_step_on_one_path(probabilities):
-    model = MockModelLayer(probabilities)
-    regresor = AutoregressionWithAlternativePathsStep(1, model, 3, False)
+def test_step_on_one_path(probabilities_with_start_element):
+    model = MockModelLayer(probabilities_with_start_element, history_entry_dims=(1,))
+    regresor = AutoregressionWithAlternativePathsStep(
+        1, 
+        model, 
+        3, 
+        probability_model_initial_input=-1,
+        index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1)
+        )
     zero_state = regresor.zero_state(1, tf.int32)
+
+    conditional_probability, new_probability_model_states = regresor._compute_next_step_probability(zero_state.step, zero_state.paths, zero_state.probability_model_states)
+
     input = tf.zeros(1, tf.int32)
     output1, state1 = regresor.call(input, zero_state)
     output2, state2 = regresor.call(input, state1)
     output3, state3 = regresor.call(input, state2)
 
     with tf.Session() as sess:
+        r_cp, r_nsp = sess.run((conditional_probability, new_probability_model_states))
         r_zero, r_s1, r_s2, r_s3, r_o1, r_o2, r_o3 = sess.run((zero_state, state1, state2, state3, output1, output2, output3))
 
-    print(r_s3)
     assert r_s3.path_probabilities == approx([0.18])
 
 

@@ -9,6 +9,7 @@ def naive_lookup_op(keys, values, first_dim_is_batch=False):
 
     If a key that is equal to no entry in passed, nobody knows what happens ;D"""
     def single_element_lookup_op(entry):
+        assert entry.shape.is_compatible_with(keys.shape[1:])
         with tf.name_scope("naive_lookup_single"):
             eq = tf.equal(keys, entry)
             if len(eq.shape) > 1:
@@ -63,7 +64,7 @@ class MockModelLayer(tf.nn.rnn_cell.RNNCell):
 
     @property
     def state_size(self):
-        return (tf.TensorShape(()), tf.TensorShape([self.history_size]))
+        return (tf.TensorShape(()), tf.TensorShape([self.history_size, *self._history_entry_dims]))
 
     @property
     def output_size(self):
