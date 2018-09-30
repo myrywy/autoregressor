@@ -74,8 +74,13 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         conditional_probability, new_probability_model_states = self._compute_next_step_probability(state.step-1, state.paths, state.probability_model_states)
         temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * state.path_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
         p_values, (path_index, element_index) = self._top_k_from_2d_tensor(temp_path_probabilities, self.number_of_alternatives)
-        new_paths = state.paths# tf.gather(state.paths, path_index)
-        # TODO: rozwiązać to jakimiś konfigurowalnymi mapowaniami
+
+        new_paths = tf.gather(state.paths, path_index)
+        if type(new_probability_model_states) is tuple:
+            new_probability_model_states = self._recurrent_gather(new_probability_model_states, path_index)
+        else:
+            new_probability_model_states = tf.gather(new_probability_model_states, path_index)
+
         next_element_ids = self.index_in_probability_distribution_to_element_id_mapping(element_index)
         new_paths = tf.concat(
             (
@@ -104,6 +109,17 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         return self.conditional_probability_model(
             previuos_step_output, 
             model_states)
+
+    def _recurrent_gather(self, t, indices):
+        if type(t) is tuple:
+            return tuple(self._recurrent_gather(e, indices) for e in t)
+        elif type(t) is tf.Tensor:
+            if len(t.shape) == 0:
+                return t
+            else:
+                return tf.gather(t, indices)
+        else:
+            raise ValueError("Probability model state type not supported by _recurrent_gather")
 
     @staticmethod
     def _top_k_from_2d_tensor(tensor2d, k):
