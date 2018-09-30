@@ -31,23 +31,39 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             probability_model_initial_input=None,
             index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x, 1),
             ):
+        super(AutoregressionWithAlternativePathsStep, self).__init__()
         self.number_of_alternatives = number_of_alternatives
         self.conditional_probability_model = conditional_probability_model
         self.max_output_sequence_length = max_output_sequence_length
         self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
         self.probability_model_initial_input = tf.identity(probability_model_initial_input)
 
-    def compute_output_shape(self, input_shape):
-        return (self.number_of_alternatives,)
+    #def compute_output_shape(self, input_shape):
+    #    return (self.number_of_alternatives,)
+    
+
+    @property
+    def state_size(self):
+        return AutoregressionState(
+                tf.TensorShape(1), 
+                tf.TensorShape((self.number_of_alternatives, self.max_output_sequence_length)),
+                tf.TensorShape((self.number_of_alternatives,)),
+                self.conditional_probability_model.state_size
+                )
+
+    @property
+    def output_size(self):
+        return tf.TensorShape((self.number_of_alternatives,))
 
     def zero_state(self, batch_size=1, dtype=tf.int32):
-        assert batch_size == 1, "Batch size MUST be equal to 1"
-        assert dtype == tf.int64 or dtype == tf.int32 or dtype == tf.int16, "Batch size MUST be equal to 1"
+        assert batch_size == 1, "Batch size MUST be equal to 1, sorry for that"
+        #assert dtype == tf.int64 or dtype == tf.int32 or dtype == tf.int16, "Batch size MUST be equal to 1"
+        dtype=tf.int32
 
         return AutoregressionState(
-            self._get_initial_step(),
-            self._get_initial_paths(dtype),
-            tf.ones((self.number_of_alternatives,), dtype=tf.float32),  # TODO: Ones here comes from absolute probabilities [0,1]
+            [self._get_initial_step()],
+            [self._get_initial_paths(dtype)],
+            [tf.ones((self.number_of_alternatives,), dtype=tf.float32)],  # TODO: Ones here comes from absolute probabilities [0,1]
             self.conditional_probability_model.zero_state(self.number_of_alternatives, dtype))
 
     def _get_initial_step(self):
@@ -71,6 +87,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         return initial_paths
 
     def call(self, input, state: AutoregressionState):
+        state = AutoregressionState(state.step[0], state.paths[0], state.path_probabilities[0], state.probability_model_states)
         conditional_probability, new_probability_model_states = self._compute_next_step_probability(state.step-1, state.paths, state.probability_model_states)
         temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * state.path_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
         p_values, (path_index, element_index) = self._top_k_from_2d_tensor(temp_path_probabilities, self.number_of_alternatives)
@@ -92,8 +109,10 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         #new_paths = tf.concat((new_paths, tf.expand_dims(element_index,1)),axis=1)
         
         new_probabilities = p_values # tf.gather(state.path_probabilities, path_index) * p_values # See above
-        new_state = AutoregressionState(state.step + 1, new_paths, new_probabilities, new_probability_model_states)
-        output = new_probabilities
+        new_step = tf.add(state.step, 1, name="increment_step")
+        new_state = AutoregressionState([new_step], [new_paths], [new_probabilities], new_probability_model_states)
+        new_probabilities_as_batch = tf.expand_dims(new_probabilities, 0)
+        output = tf.identity(new_probabilities_as_batch, name="regressor_step_output")
         return output, new_state
 
     def _compute_next_step_probability(self, step, paths, model_states):
