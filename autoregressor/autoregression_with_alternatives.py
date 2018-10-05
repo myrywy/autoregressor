@@ -56,23 +56,24 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         return tf.TensorShape((self.number_of_alternatives,))
 
     def zero_state(self, batch_size=1, dtype=tf.int32):
-        assert batch_size == 1, "Batch size MUST be equal to 1, sorry for that"
+        # TODO: jakieś bardziej eleganckie rozwiązanie z dtype
         #assert dtype == tf.int64 or dtype == tf.int32 or dtype == tf.int16, "Batch size MUST be equal to 1"
         dtype=tf.int32
 
         return AutoregressionState(
-            [self._get_initial_step()],
-            [self._get_initial_paths(dtype)],
-            [tf.ones((self.number_of_alternatives,), dtype=tf.float32)],  # TODO: Ones here comes from absolute probabilities [0,1]
-            self.conditional_probability_model.zero_state(self.number_of_alternatives, dtype))
+            self._get_initial_step(batch_size),
+            self._get_initial_paths(dtype, batch_size),
+            tf.ones((batch_size, self.number_of_alternatives,), dtype=tf.float32),  # TODO: Ones here comes from absolute probabilities [0,1]
+            self._recurrent_replicate_for_batch(self.conditional_probability_model.zero_state(self.number_of_alternatives, dtype),batch_size)
+            )
 
-    def _get_initial_step(self):
+    def _get_initial_step(self, batch_size):
         if self.probability_model_initial_input not in {None, False}:
-            return tf.ones((self.number_of_alternatives,),dtype=tf.int32)
+            return tf.ones((batch_size, self.number_of_alternatives,),dtype=tf.int32)
         else:
-            return tf.zeros((self.number_of_alternatives,),dtype=tf.int32)
+            return tf.zeros((batch_size, self.number_of_alternatives,),dtype=tf.int32)
 
-    def _get_initial_paths(self, dtype):
+    def _get_initial_paths(self, dtype, batch_size):
         initial_paths = tf.zeros((self.number_of_alternatives, self.max_output_sequence_length), dtype=dtype)
         if self.probability_model_initial_input not in {None, False}:
             initial_paths = tf.concat(
@@ -84,16 +85,29 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
                     axis=1
                 )
         initial_paths = tf.expand_dims(initial_paths, 2)
+        initial_paths = tf.gather([initial_paths], tf.zeros((batch_size,), dtype=tf.int32))
         return initial_paths
 
     def call(self, input, state: AutoregressionState):
-        state = AutoregressionState(state.step[0], state.paths[0], state.path_probabilities[0], state.probability_model_states)
+        # This firs call is just for dtype inference
+        example_result = self._call_with_one_batch_element(input[0], self._recurrent_gather(state,0))
+        dtype = self._recurrent_apply(example_result, lambda t: t.dtype)
+        dtype = (dtype[0], AutoregressionState(*dtype[1]))
+        return tf.map_fn(
+            lambda input_state: self._call_with_one_batch_element(input_state[0], input_state[1]),
+            (input, state),
+            infer_shape=True,
+            dtype=dtype
+            )
+
+    def _call_with_one_batch_element(self, input, state: AutoregressionState):
+        state = AutoregressionState(*state)
         conditional_probability, new_probability_model_states = self._compute_next_step_probability(state.step-1, state.paths, state.probability_model_states)
         temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * state.path_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
         p_values, (path_index, element_index) = self._top_k_from_2d_tensor(temp_path_probabilities, self.number_of_alternatives)
 
         new_paths = tf.gather(state.paths, path_index)
-        if type(new_probability_model_states) is tuple:
+        if isinstance(new_probability_model_states, tuple):
             new_probability_model_states = self._recurrent_gather(new_probability_model_states, path_index)
         else:
             new_probability_model_states = tf.gather(new_probability_model_states, path_index)
@@ -110,9 +124,8 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         
         new_probabilities = p_values # tf.gather(state.path_probabilities, path_index) * p_values # See above
         new_step = tf.add(state.step, 1, name="increment_step")
-        new_state = AutoregressionState([new_step], [new_paths], [new_probabilities], new_probability_model_states)
-        new_probabilities_as_batch = tf.expand_dims(new_probabilities, 0)
-        output = tf.identity(new_probabilities_as_batch, name="regressor_step_output")
+        new_state = AutoregressionState(new_step, new_paths, new_probabilities, new_probability_model_states)
+        output = tf.identity(new_probabilities, name="regressor_step_output")
         return output, new_state
 
     def _compute_next_step_probability(self, step, paths, model_states):
@@ -130,15 +143,35 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             model_states)
 
     def _recurrent_gather(self, t, indices):
-        if type(t) is tuple:
+        if isinstance(t, tuple):
             return tuple(self._recurrent_gather(e, indices) for e in t)
-        elif type(t) is tf.Tensor:
+        elif isinstance(t, tf.Tensor):
             if len(t.shape) == 0:
                 return t
             else:
                 return tf.gather(t, indices)
         else:
-            raise ValueError("Probability model state type not supported by _recurrent_gather")
+            raise ValueError("Probability model state type not supported by _recurrent_gather: {}".format(type(t)))
+
+    def _recurrent_expand_dims(self, t, axis):
+        if isinstance(t, tuple):
+            return tuple(self._recurrent_expand_dims(e, axis) for e in t)
+        elif isinstance(t, tf.Tensor):
+            return tf.expand_dims(t, axis)
+        else:
+            raise ValueError("Probability model state type not supported by _recurrent_epand_dims: {}".format(type(t)))
+    
+    def _recurrent_replicate_for_batch(self, t, batch_size):
+        def replicate(tensor):
+            return tf.gather([tensor], tf.zeros((batch_size), tf.int32))
+        r = self._recurrent_apply(t, replicate)
+        return r
+
+    def _recurrent_apply(self, t, fn, *a, **k):
+        if isinstance(t, tuple):
+            return tuple(self._recurrent_apply(e, fn, *a, **k) for e in t)
+        else:
+            return fn(t, *a, **k)
 
     @staticmethod
     def _top_k_from_2d_tensor(tensor2d, k):

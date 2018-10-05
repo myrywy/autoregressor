@@ -45,7 +45,7 @@ def mock_model(hisory_to_probability_mapping, first_dim_is_batch=False):
     return mock_model_fn
 
 class MockModelLayer(tf.nn.rnn_cell.RNNCell):
-    def __init__(self, hisory_to_probability_mapping, history_entry_dims=(), first_dim_is_batch=True):
+    def __init__(self, hisory_to_probability_mapping, history_entry_dims=(), first_dim_is_batch=True, step_redundant=False):
         super(MockModelLayer, self).__init__()
         self.history_size = max(len(history) for history in hisory_to_probability_mapping.keys())
         self.output_distribution_size = max(len(dist_size) for dist_size in hisory_to_probability_mapping.values())
@@ -56,6 +56,7 @@ class MockModelLayer(tf.nn.rnn_cell.RNNCell):
             min(len(dist_size) for dist_size in hisory_to_probability_mapping.values()), \
             "Distribution size must be the same size in every examle"
         self._history_entry_dims = history_entry_dims
+        self.step_redundant = step_redundant
         self.layer_function = mock_model(hisory_to_probability_mapping, first_dim_is_batch=first_dim_is_batch)
 
 
@@ -71,7 +72,10 @@ class MockModelLayer(tf.nn.rnn_cell.RNNCell):
         return self.output_distribution_size
 
     def zero_state(self, batch_size, dtype):
-        return (tf.constant(0), tf.zeros(shape=(batch_size, self.history_size, *self._history_entry_dims), dtype=dtype))
+        if self.step_redundant:
+            return (tf.zeros((batch_size,),dtype=tf.int32), tf.zeros(shape=(batch_size, self.history_size, *self._history_entry_dims), dtype=dtype))
+        else:
+            return (tf.constant(0), tf.zeros(shape=(batch_size, self.history_size, *self._history_entry_dims), dtype=dtype))
 
     def call(self, input, state):
         return self.layer_function(input, state)

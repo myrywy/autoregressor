@@ -62,8 +62,8 @@ def probabilities_with_start_element_no_third():
     probabilities = {tuple((i,) for i in k):v for k, v in probabilities.items()}
     return probabilities
 
-
-def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_third):
+@pytest.mark.parametrize("batch_size", [1,2])
+def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_third, batch_size):
     seq_len = 3
     model = MockModelLayer(probabilities_with_start_element_no_third, history_entry_dims=(1,))
     regresor = AutoregressionWithAlternativePathsStep(
@@ -72,11 +72,13 @@ def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_thir
         seq_len, 
         probability_model_initial_input=-1,
         index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1))
-    inputs = tf.zeros((1, seq_len, 1), tf.float32) # this actually doesn't matter
-    output, states = tf.nn.dynamic_rnn(regresor, inputs, sequence_length=[seq_len], dtype=tf.float32)
+    inputs = tf.zeros((batch_size, seq_len, 1), tf.float32) # this values actually doesn't matter, only shape is important
+    output, states = tf.nn.dynamic_rnn(regresor, inputs, sequence_length=[seq_len]*batch_size, dtype=tf.float32)
     with tf.Session() as sess:
         r_output = sess.run(output)
-    assert r_output == approx([[0.5, 0.5], [0.3, 0.2], [0.19, 0.18]])
+    assert r_output == approx([
+        [[0.5, 0.5], [0.3, 0.2], [0.19, 0.18]],
+        ]*batch_size)
 
 
 def test_step_call(probabilities_with_start_element_no_third):
@@ -88,7 +90,7 @@ def test_step_call(probabilities_with_start_element_no_third):
         probability_model_initial_input=-1,
         index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1))
     zero_state = regresor.zero_state(1, tf.int32)
-    input = tf.zeros(1, tf.int32)
+    input = tf.zeros((1, 1), tf.int32) # [one batch, one sequence element]
     output1, state1 = regresor.call(input, zero_state)
     output2, state2 = regresor.call(input, state1)
     output3, state3 = regresor.call(input, state2)
@@ -96,9 +98,9 @@ def test_step_call(probabilities_with_start_element_no_third):
     with tf.Session() as sess:
         r_zero, r_s1, r_s2, r_s3, r_o1, r_o2, r_o3 = sess.run((zero_state, state1, state2, state3, output1, output2, output3))
 
-    assert r_s1.path_probabilities == approx([0.5, 0.5])
-    assert r_s2.path_probabilities == approx([0.3, 0.2]) # [0.5*0.6, 0.5*0.4]
-    assert r_s3.path_probabilities == approx([0.19, 0.18])
+    assert r_s1.path_probabilities == approx([[0.5, 0.5]])
+    assert r_s2.path_probabilities == approx([[0.3, 0.2]]) # [0.5*0.6, 0.5*0.4]
+    assert r_s3.path_probabilities == approx([[0.19, 0.18]])
 
 
 def test_step_on_one_path(probabilities_with_start_element):
@@ -112,9 +114,11 @@ def test_step_on_one_path(probabilities_with_start_element):
         )
     zero_state = regresor.zero_state(1, tf.int32)
 
-    conditional_probability, new_probability_model_states = regresor._compute_next_step_probability(zero_state.step, zero_state.paths, zero_state.probability_model_states)
+    zero_state_for_one_batch_element = AutoregressionState(*regresor._recurrent_apply(zero_state, lambda t: tf.gather(t, 0)))
 
-    input = tf.zeros(1, tf.int32)
+    conditional_probability, new_probability_model_states = regresor._compute_next_step_probability(zero_state_for_one_batch_element.step, zero_state_for_one_batch_element.paths, zero_state_for_one_batch_element.probability_model_states)
+
+    input = tf.zeros((1, 1), tf.int32)
     output1, state1 = regresor.call(input, zero_state)
     output2, state2 = regresor.call(input, state1)
     output3, state3 = regresor.call(input, state2)
