@@ -38,9 +38,6 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
         self.probability_model_initial_input = tf.identity(probability_model_initial_input)
 
-    #def compute_output_shape(self, input_shape):
-    #    return (self.number_of_alternatives,)
-    
 
     @property
     def state_size(self):
@@ -104,6 +101,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         state = AutoregressionState(*state)
         conditional_probability, new_probability_model_states = self._compute_next_step_probability(state.step-1, state.paths, state.probability_model_states)
         temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * state.path_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
+        # temp_path_probabilities = self.mask_probabilities(temp_path_probabilities, state.step)
         p_values, (path_index, element_index) = self._top_k_from_2d_tensor(temp_path_probabilities, self.number_of_alternatives)
 
         new_paths = tf.gather(state.paths, path_index)
