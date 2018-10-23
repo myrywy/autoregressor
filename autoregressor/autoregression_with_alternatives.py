@@ -30,6 +30,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             max_output_sequence_length,
             probability_model_initial_input=None,
             index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x, 1),
+            probability_masking_layer=None,
             ):
         super(AutoregressionWithAlternativePathsStep, self).__init__()
         self.number_of_alternatives = number_of_alternatives
@@ -37,6 +38,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         self.max_output_sequence_length = max_output_sequence_length
         self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
         self.probability_model_initial_input = tf.identity(probability_model_initial_input)
+        self.probability_masking_layer = probability_masking_layer
 
 
     @property
@@ -98,11 +100,15 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             )
 
     def _call_with_one_batch_element(self, input, state: AutoregressionState):
+        """Jeśli initial step nie jest None to step zaczyna się liczyć od 1, nie od 0. """
         state = AutoregressionState(*state)
         conditional_probability, new_probability_model_states = self._compute_next_step_probability(state.step-1, state.paths, state.probability_model_states)
         temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * state.path_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
-        # temp_path_probabilities = self.mask_probabilities(temp_path_probabilities, state.step)
-        p_values, (path_index, element_index) = self._top_k_from_2d_tensor(temp_path_probabilities, self.number_of_alternatives)
+        if self.probability_masking_layer is not None:
+            masked_probabilities = self.probability_masking_layer(temp_path_probabilities, step=state.step)
+        else:
+            masked_probabilities = temp_path_probabilities
+        p_values, (path_index, element_index) = self._top_k_from_2d_tensor(masked_probabilities, self.number_of_alternatives)
 
         new_paths = tf.gather(state.paths, path_index)
         if isinstance(new_probability_model_states, tuple):

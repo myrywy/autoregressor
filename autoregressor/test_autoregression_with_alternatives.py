@@ -3,6 +3,7 @@ import pytest
 from pytest import approx
 import mock_prob_model
 from mock_prob_model import MockModelLayer
+from element_probablity_mask import ElementProbabilityMasking
 from autoregression_with_alternatives import *
 from tensorflow.python import debug as tf_debug
 
@@ -81,6 +82,42 @@ def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_thir
         ]*batch_size)
 
 
+@pytest.mark.parametrize(
+    "batch_size, allowed, expected", 
+    [
+        (
+            1,
+            [[],[],[]],
+            [[0.5, 0.5], [0.3, 0.2], [0.19, 0.18]]
+            ),
+        (
+            2,
+            [[],[],[]],
+            [[0.5, 0.5], [0.3, 0.2], [0.19, 0.18]]
+            ),
+    ]
+    )
+def test_autoregressor_with_mask_with_dynamic_rnn(probabilities_with_start_element_no_third, batch_size, allowed, expected):
+    seq_len = 3
+    DISTRIBUTION_SIZE = 3
+    masking = ElementProbabilityMasking(allowed, DISTRIBUTION_SIZE, tf.identity)
+    model = MockModelLayer(probabilities_with_start_element_no_third, history_entry_dims=(1,))
+    regresor = AutoregressionWithAlternativePathsStep(
+        2, 
+        model, 
+        seq_len, 
+        probability_model_initial_input=-1,
+        index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1),
+        probability_masking_layer=masking)
+    inputs = tf.zeros((batch_size, seq_len, 1), tf.float32) # this values actually doesn't matter, only shape is important
+    output, states = tf.nn.dynamic_rnn(regresor, inputs, sequence_length=[seq_len]*batch_size, dtype=tf.float32)
+    with tf.Session() as sess:
+        r_output,r_states = sess.run((output, states))
+    assert r_output == approx([
+        expected,
+        ]*batch_size)
+
+
 def test_step_call(probabilities_with_start_element_no_third):
     model = MockModelLayer(probabilities_with_start_element_no_third, history_entry_dims=(1,))
     regresor = AutoregressionWithAlternativePathsStep(
@@ -89,6 +126,29 @@ def test_step_call(probabilities_with_start_element_no_third):
         3, 
         probability_model_initial_input=-1,
         index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1))
+    zero_state = regresor.zero_state(1, tf.int32)
+    input = tf.zeros((1, 1), tf.int32) # [one batch, one sequence element]
+    output1, state1 = regresor.call(input, zero_state)
+    output2, state2 = regresor.call(input, state1)
+    output3, state3 = regresor.call(input, state2)
+
+    with tf.Session() as sess:
+        r_zero, r_s1, r_s2, r_s3, r_o1, r_o2, r_o3 = sess.run((zero_state, state1, state2, state3, output1, output2, output3))
+
+    assert r_s1.path_probabilities == approx([[0.5, 0.5]])
+    assert r_s2.path_probabilities == approx([[0.3, 0.2]]) # [0.5*0.6, 0.5*0.4]
+    assert r_s3.path_probabilities == approx([[0.19, 0.18]])
+
+
+def test_step_call_with_identity_mask(probabilities_with_start_element_no_third):
+    model = MockModelLayer(probabilities_with_start_element_no_third, history_entry_dims=(1,))
+    regresor = AutoregressionWithAlternativePathsStep(
+        2, 
+        model, 
+        3, 
+        probability_model_initial_input=-1,
+        index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1),
+        probability_masking_layer=lambda x, step: x)
     zero_state = regresor.zero_state(1, tf.int32)
     input = tf.zeros((1, 1), tf.int32) # [one batch, one sequence element]
     output1, state1 = regresor.call(input, zero_state)
