@@ -6,7 +6,7 @@ class ElementProbabilityMasking(tf.keras.layers.Layer):
             self, 
             allowed: List[List[int]], 
             probability_distribution_size: int,
-            element_id_to_index_in_probability_distribution_mapping=lambda x: x[0],
+            element_id_to_index_in_probability_distribution_mapping=tf.identity,
             ):
         """
         This class is work in progress.
@@ -31,10 +31,7 @@ class ElementProbabilityMasking(tf.keras.layers.Layer):
         values = tf.ones((len(indices_id)), dtype=tf.float32)
         indices_id = tf.constant(indices_id, dtype=tf.int64)
         indices_step = tf.constant(indices_step, dtype=tf.int64)
-        indices_position = tf.map_fn(
-            element_id_to_index_in_probability_distribution_mapping,
-            indices_id
-        )
+        indices_position = element_id_to_index_in_probability_distribution_mapping(indices_id)
         indices = tf.concat(
             (
                 tf.expand_dims(indices_step, 1), 

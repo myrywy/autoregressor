@@ -29,7 +29,8 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             conditional_probability_model,
             max_output_sequence_length,
             probability_model_initial_input=None,
-            index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x, 1),
+            index_in_probability_distribution_to_element_id_mapping=tf.identity,
+            id_to_embedding_mapping=lambda x: tf.expand_dims(x,1),
             probability_masking_layer=None,
             ):
         super(AutoregressionWithAlternativePathsStep, self).__init__()
@@ -38,6 +39,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         self.max_output_sequence_length = max_output_sequence_length
         self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
         self.probability_model_initial_input = tf.identity(probability_model_initial_input)
+        self.id_to_embedding_mapping = id_to_embedding_mapping
         self.probability_masking_layer = probability_masking_layer
 
 
@@ -83,7 +85,6 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
                     ),
                     axis=1
                 )
-        initial_paths = tf.expand_dims(initial_paths, 2)
         initial_paths = tf.gather([initial_paths], tf.zeros((batch_size,), dtype=tf.int32))
         return initial_paths
 
@@ -102,6 +103,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
     def _call_with_one_batch_element(self, input, state: AutoregressionState):
         """Jeśli initial step nie jest None to step zaczyna się liczyć od 1, nie od 0. """
         state = AutoregressionState(*state)
+        assert len(state.paths.shape) == 2
         conditional_probability, new_probability_model_states = self._compute_next_step_probability(state.step-1, state.paths, state.probability_model_states)
         temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * state.path_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
         if self.probability_masking_layer is not None:
@@ -117,13 +119,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             new_probability_model_states = tf.gather(new_probability_model_states, path_index)
 
         next_element_ids = self.index_in_probability_distribution_to_element_id_mapping(element_index)
-        new_paths = tf.concat(
-            (
-                new_paths[:, :state.step[0]], 
-                tf.expand_dims(next_element_ids,1), 
-                new_paths[:, state.step[0]+1:]
-                ),
-            axis=1)
+        new_paths = self._insert(new_paths, next_element_ids, state.step)
         #new_paths = tf.concat((new_paths, tf.expand_dims(element_index,1)),axis=1)
         
         new_probabilities = p_values # tf.gather(state.path_probabilities, path_index) * p_values # See above
@@ -142,8 +138,9 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
                     axis=1,
                     name="concat_indices_to_gather")
             )
+        previuos_step_embeddings = self.id_to_embedding_mapping(previuos_step_output)
         return self.conditional_probability_model(
-            previuos_step_output, 
+            previuos_step_embeddings, 
             model_states)
 
     def _recurrent_gather(self, t, indices):
@@ -185,3 +182,28 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         top_index1 = top_indices // tf.shape(tensor2d)[1]
         top_index2 = top_indices % tf.shape(tensor2d)[1]
         return top_values, (top_index1, top_index2)
+
+    @staticmethod
+    def _insert(batch, values, index):
+        """Insert elements from values as index-th elements of corresponding tensors from batch.
+        Example:
+            tensor = [[1,2,3], [4,5,6]]
+            values = [8,9]
+            index = [1,1]
+            
+            returns [[1,8,3], [4,9,6]]
+            
+        WARNING:
+            This is a work in progress, current implementation supports only index vector that has all values the same."""
+        assert len(values.shape) == len(batch.shape) - 1, "Values rank thas not match vector in which they are to be inserted"
+        assert values.shape[0].is_compatible_with(batch.shape[0]), "Batch size different than number of values to insert"
+        assert index.shape[0].is_compatible_with(batch.shape[0]), "Batch size different than number of indices"
+        assert values.shape[1:].is_compatible_with(batch.shape[2:]), "Dimensionality of values doesnt match dimensionality of batch elements"
+
+        return tf.concat(
+            (
+                batch[:, :index[0]], 
+                tf.expand_dims(values,1), 
+                batch[:, index[0]+1:]
+                ),
+            axis=1)

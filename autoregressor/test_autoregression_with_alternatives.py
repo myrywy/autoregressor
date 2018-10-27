@@ -72,7 +72,7 @@ def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_thir
         model, 
         seq_len, 
         probability_model_initial_input=-1,
-        index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1))
+        index_in_probability_distribution_to_element_id_mapping=lambda x: x+1)
     inputs = tf.zeros((batch_size, seq_len, 1), tf.float32) # this values actually doesn't matter, only shape is important
     output, states = tf.nn.dynamic_rnn(regresor, inputs, sequence_length=[seq_len]*batch_size, dtype=tf.float32)
     with tf.Session() as sess:
@@ -82,9 +82,11 @@ def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_thir
         ]*batch_size)
 
 
+@pytest.mark.skip
 @pytest.mark.parametrize(
     "batch_size, allowed, expected", 
     [
+        # all allowed - results should be the same as with no mask
         (
             1,
             [[],[],[]],
@@ -94,6 +96,12 @@ def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_thir
             2,
             [[],[],[]],
             [[0.5, 0.5], [0.3, 0.2], [0.19, 0.18]]
+            ),
+        # only one element allowed
+        (
+            2,
+            [[1],[1],[1]], # TODO: jak tu się wstawi zera to liczby są ok (ale to źle bo w allowed powinny być id-a nie indeksy w prob-dist)
+            [[0.5, 0.0], [0.5*0.6, 0.0], [0.5*0.6*0.6, 0.0]]
             ),
     ]
     )
@@ -107,7 +115,7 @@ def test_autoregressor_with_mask_with_dynamic_rnn(probabilities_with_start_eleme
         model, 
         seq_len, 
         probability_model_initial_input=-1,
-        index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1),
+        index_in_probability_distribution_to_element_id_mapping=lambda x: x+1,
         probability_masking_layer=masking)
     inputs = tf.zeros((batch_size, seq_len, 1), tf.float32) # this values actually doesn't matter, only shape is important
     output, states = tf.nn.dynamic_rnn(regresor, inputs, sequence_length=[seq_len]*batch_size, dtype=tf.float32)
@@ -125,7 +133,7 @@ def test_step_call(probabilities_with_start_element_no_third):
         model, 
         3, 
         probability_model_initial_input=-1,
-        index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1))
+        index_in_probability_distribution_to_element_id_mapping=lambda x: x+1)
     zero_state = regresor.zero_state(1, tf.int32)
     input = tf.zeros((1, 1), tf.int32) # [one batch, one sequence element]
     output1, state1 = regresor.call(input, zero_state)
@@ -147,7 +155,7 @@ def test_step_call_with_identity_mask(probabilities_with_start_element_no_third)
         model, 
         3, 
         probability_model_initial_input=-1,
-        index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1),
+        index_in_probability_distribution_to_element_id_mapping=lambda x: x+1,
         probability_masking_layer=lambda x, step: x)
     zero_state = regresor.zero_state(1, tf.int32)
     input = tf.zeros((1, 1), tf.int32) # [one batch, one sequence element]
@@ -170,7 +178,7 @@ def test_step_on_one_path(probabilities_with_start_element):
         model, 
         3, 
         probability_model_initial_input=-1,
-        index_in_probability_distribution_to_element_id_mapping=lambda x: tf.expand_dims(x+1, 1)
+        index_in_probability_distribution_to_element_id_mapping=lambda x: x+1
         )
     zero_state = regresor.zero_state(1, tf.int32)
 
@@ -192,7 +200,7 @@ def test_step_on_one_path(probabilities_with_start_element):
 
 @pytest.mark.parametrize("target_step,path,expected_prob_dist", [
     #(0, [0,0,0], [0.5, 0.5, 0.0]),
-    
+    # w path poniżej są właściwie embeddingsy
     (1, [[1],[0],[0]], [0.6, 0.4, 0.0]), # a W tym teście chcemy przewidzieć 2-gie słowo (o indeksie 0 bo indeksujemy od 0), wiemy, że pierwsze słowo (indeks=0) to "1". Oczekiwany rozkład prawdopodobieństwa 2-go słowa po słowniku to P(a_2=1, a_2=2, a_2=3)[0.6, 0.4, 0.0]
     (1, [[2],[0],[0]], [0.0, 0.0, 1.0]), # b
 
@@ -208,7 +216,7 @@ def test__compute_next_step_probability(probabilities, target_step, path, expect
     current_autoregressor_step = tf.constant([target_step-1], name="init_step") 
     # To jest to co (udajemy, że) do tej pory wygenerował autoregresor.
 
-    paths = tf.constant([path], name="init_path") 
+    paths = tf.constant([path], name="init_path")[:,:,0] # dodanie wymiaru batcha i redukcja jednoelementowych embeddingsów do skalarnych id-ków
 
     # MockModel history 
     # Jak chemy poznać n-te słowo
@@ -263,3 +271,59 @@ def test__top_k_from_2d_tensor():
     np.testing.assert_array_almost_equal(exp3[0], r3[0])
     np.testing.assert_array_almost_equal(exp4[0], r4[0])
     np.testing.assert_array_almost_equal(exp3_1[0], r3_1[0])
+
+
+@pytest.mark.parametrize(
+    "batch, values, indices, expected",
+    [
+        (
+            [[1,2,3], [4,5,6]],
+            [8,9],
+            [0,0],
+            [[8,2,3], [9,5,6]]
+        ),
+        (
+            [[1,2,3], [4,5,6]],
+            [8,9],
+            [1,1],
+            [[1,8,3], [4,9,6]]
+        ),
+        (
+            [[1,2,3], [4,5,6]],
+            [8,9],
+            [2,2],
+            [[1,2,8], [4,5,9]]
+        ),
+        (
+            [[[1,7],[2,8],[3,9]], [[4,10],[5,11],[6,12]]],
+            [[8,13],[9,14]],
+            [0,0],
+            [[[8,13],[2,8],[3,9]], [[9,14],[5,11],[6,12]]]
+        ),
+        (
+            [[[1,7],[2,8],[3,9]], [[4,10],[5,11],[6,12]]],
+            [[8,13],[9,14]],
+            [1,1],
+            [[[1,7],[8,13],[3,9]], [[4,10],[9,14],[6,12]]]
+        ),
+        (
+            [[[1,7],[2,8],[3,9]], [[4,10],[5,11],[6,12]]],
+            [[8,13],[9,14]],
+            [2,2],
+            [[[1,7],[2,8],[8,13]], [[4,10],[5,11],[9,14]]]
+        )
+        # Okej, okej, tu powinny być jeszcze testy na indices postaci innej niż [i, i, i,... i], ale ta funkcja na razie nie jest potrzebna 
+    ]
+)
+def test__insert(batch, values, indices, expected):
+    t_batch = tf.constant(batch)
+    t_values = tf.constant(values)
+    t_indices = tf.constant(indices)
+    expected = np.array(expected)
+
+    new_batch = AutoregressionWithAlternativePathsStep._insert(t_batch, t_values, t_indices)
+
+    with tf.Session() as sess:
+        result = sess.run(new_batch)
+
+    assert result == approx(expected)

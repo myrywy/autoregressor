@@ -39,9 +39,9 @@ Custom mappings between position (index) in probability distribution and element
 Default mapping indeed assumes that probability of an elemnent `[i]` is given by `i`-th element in probability distribution vector.
 Of course, it is important to use consistent mappings in all component of the system - Autoregressor and ElementProbabilityMasking and a conditional probability model that produces probability distributions.
 
-# TODO: sprawdzić czy to prawda
-Whenever it is needed to provide a layer with mapping between sequence element and probability distribution (or in opposit direction) it is assumed that mapping function acts on just one element (not a batch or sequence). 
-Example: if element is a one-element vector consisting of id number which is positive integer (1, 2, ...) and probability distribution is a vecor of probabilities of elements in the order of their id then::
+
+Whenever it is needed to provide a layer with mapping between sequence element and probability distribution (or in opposit direction) it is assumed that mapping function acts on batchs of elements (batch of ids or batch of indices). 
+Example: if element's id is a positive integer (1, 2, ...) and probability distribution is a vecor of probabilities of elements in the order of their id then::
     
-    prob_dist_to_element_mappig = lambda index: [index+1]
+    prob_dist_to_element_mappig = lambda index: index+1
 
