@@ -56,15 +56,15 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
     def output_size(self):
         return tf.TensorShape((self.number_of_alternatives,))
 
-    def zero_state(self, batch_size=1, dtype=tf.int32):
+    def zero_state(self, batch_size=1, dtype=tf.int32, initial_paths=None, initial_probablities=None):
         # TODO: jakieś bardziej eleganckie rozwiązanie z dtype
         #assert dtype == tf.int64 or dtype == tf.int32 or dtype == tf.int16, "Batch size MUST be equal to 1"
         dtype=tf.int32
 
         return AutoregressionState(
             self._get_initial_step(batch_size),
-            self._get_initial_paths(dtype, batch_size),
-            tf.ones((batch_size, self.number_of_alternatives,), dtype=tf.float32),  # TODO: Ones here comes from absolute probabilities [0,1]
+            initial_paths if initial_paths is not None else self._get_initial_paths(dtype, batch_size),
+            initial_probablities if initial_probablities is not None else self._get_initial_probabilites(batch_size), 
             self._recurrent_replicate_for_batch(self.conditional_probability_model.zero_state(self.number_of_alternatives, dtype),batch_size)
             )
 
@@ -87,6 +87,9 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
                 )
         initial_paths = tf.gather([initial_paths], tf.zeros((batch_size,), dtype=tf.int32))
         return initial_paths
+    
+    def _get_initial_probabilites(self, batch_size):
+        return tf.ones((batch_size, self.number_of_alternatives,), dtype=tf.float32)  # TODO: Ones here comes from absolute probabilities [0,1]
 
     def call(self, input, state: AutoregressionState):
         # This firs call is just for dtype inference
@@ -100,29 +103,36 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             dtype=dtype
             )
 
+    def _extend_sequence(self, input_sequences, input_probabilities, step, probability_model_state):
+        """This function takes N sequences with probabilites assigned to them and produces M output sequences and their probabilites according to 
+        a conditional probability model. Each of output sequences is one of inputs sequences with an exactly one element appended at the end. 
+        Output sequences are sorted with respect to their probabelity."""
+        conditional_probability, new_probability_model_states = self._compute_next_step_probability(step-1, input_sequences, probability_model_state)
+        temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * input_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
+        if self.probability_masking_layer is not None:
+            masked_probabilities = self.probability_masking_layer(temp_path_probabilities, step=step)
+        else:
+            masked_probabilities = temp_path_probabilities
+        probability_values, (sequence_index, element_index) = self._top_k_from_2d_tensor(masked_probabilities, self.number_of_alternatives)
+
+        new_paths = tf.gather(input_sequences, sequence_index)
+        if isinstance(new_probability_model_states, tuple):
+            new_probability_model_states = self._recurrent_gather(new_probability_model_states, sequence_index)
+        else:
+            new_probability_model_states = tf.gather(new_probability_model_states, sequence_index)
+
+        next_element_ids = self.index_in_probability_distribution_to_element_id_mapping(element_index)
+        new_paths = self._insert(new_paths, next_element_ids, step)
+        return probability_values, new_paths, new_probability_model_states
+
     def _call_with_one_batch_element(self, input, state: AutoregressionState):
         """Jeśli initial step nie jest None to step zaczyna się liczyć od 1, nie od 0. """
         state = AutoregressionState(*state)
         assert len(state.paths.shape) == 2
-        conditional_probability, new_probability_model_states = self._compute_next_step_probability(state.step-1, state.paths, state.probability_model_states)
-        temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * state.path_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
-        if self.probability_masking_layer is not None:
-            masked_probabilities = self.probability_masking_layer(temp_path_probabilities, step=state.step)
-        else:
-            masked_probabilities = temp_path_probabilities
-        p_values, (path_index, element_index) = self._top_k_from_2d_tensor(masked_probabilities, self.number_of_alternatives)
-
-        new_paths = tf.gather(state.paths, path_index)
-        if isinstance(new_probability_model_states, tuple):
-            new_probability_model_states = self._recurrent_gather(new_probability_model_states, path_index)
-        else:
-            new_probability_model_states = tf.gather(new_probability_model_states, path_index)
-
-        next_element_ids = self.index_in_probability_distribution_to_element_id_mapping(element_index)
-        new_paths = self._insert(new_paths, next_element_ids, state.step)
-        #new_paths = tf.concat((new_paths, tf.expand_dims(element_index,1)),axis=1)
         
-        new_probabilities = p_values # tf.gather(state.path_probabilities, path_index) * p_values # See above
+        #new_paths = tf.concat((new_paths, tf.expand_dims(element_index,1)),axis=1)zx
+        
+        new_probabilities, new_paths, new_probability_model_states = self._extend_sequence(state.paths, state.path_probabilities, state.step, state.probability_model_states) # tf.gather(state.path_probabilities, path_index) * p_values # See above
         new_step = tf.add(state.step, 1, name="increment_step")
         new_state = AutoregressionState(new_step, new_paths, new_probabilities, new_probability_model_states)
         output = tf.identity(new_probabilities, name="regressor_step_output")
@@ -176,7 +186,8 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
 
     @staticmethod
     def _top_k_from_2d_tensor(tensor2d, k):
-        """Find top k values of 2D tensor. Return values themselves and vectors their first and second indices."""
+        """Find top k values of 2D tensor. Return values themselves and vectors their first and second indices.
+        If two elements are equal, the lower-row has priority, if they are in the same row, lower index has priority. """
         flat_tensor = tf.reshape(tensor2d, (-1,))
         top_values, top_indices = tf.nn.top_k(flat_tensor, k)
         top_index1 = top_indices // tf.shape(tensor2d)[1]

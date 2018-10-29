@@ -6,6 +6,8 @@ class ElementProbabilityMasking(tf.keras.layers.Layer):
             self, 
             allowed: List[List[int]], 
             probability_distribution_size: int,
+            id_lower_limit, # inclusive 
+            id_upper_limit, # exclusive
             element_id_to_index_in_probability_distribution_mapping=tf.identity,
             ):
         """
@@ -15,6 +17,9 @@ class ElementProbabilityMasking(tf.keras.layers.Layer):
         allowed_values[0] <- lista możliwych elementów na pozycji zerowej, wszystkie elementy, których nie ma na tej liści
         będą miały zerowe prawdopodobieństwo. Wyjątek: jeśli lista jest pusta to oznacza, że wszytkie elementy są możliwe
         probability_distribution_size - szerokość rozkładu prawdopodobieństwa 
+        id_lower_limit (inclusive)
+        id_upper_limit (exclusive)
+
         """
         super(ElementProbabilityMasking, self).__init__()
         self.element_id_to_index_in_probability_distribution_mapping = element_id_to_index_in_probability_distribution_mapping
@@ -22,7 +27,7 @@ class ElementProbabilityMasking(tf.keras.layers.Layer):
         indices_id = []
         for step, allowed_ids in enumerate(allowed):
             if not allowed_ids:
-                allowed_ids = [*range(probability_distribution_size)]
+                allowed_ids = [*range(id_lower_limit, id_upper_limit)]
             # remove duplicates and sort
             allowed_ids = [*sorted({*allowed_ids})]
             indices_id.extend(identifier for identifier in allowed_ids)

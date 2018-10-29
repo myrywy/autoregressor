@@ -77,12 +77,16 @@ def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_thir
     output, states = tf.nn.dynamic_rnn(regresor, inputs, sequence_length=[seq_len]*batch_size, dtype=tf.float32)
     with tf.Session() as sess:
         r_output = sess.run(output)
-    assert r_output == approx([
-        [[0.5, 0.5], [0.3, 0.2], [0.19, 0.18]],
-        ]*batch_size)
+    assert r_output == approx(
+            np.array(
+                [
+                    [[0.5, 0.5], [0.3, 0.2], [0.19, 0.18]],
+                ]*batch_size
+            )
+        )
 
 
-@pytest.mark.skip
+
 @pytest.mark.parametrize(
     "batch_size, allowed, expected", 
     [
@@ -100,15 +104,15 @@ def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_thir
         # only one element allowed
         (
             2,
-            [[1],[1],[1]], # TODO: jak tu się wstawi zera to liczby są ok (ale to źle bo w allowed powinny być id-a nie indeksy w prob-dist)
-            [[0.5, 0.0], [0.5*0.6, 0.0], [0.5*0.6*0.6, 0.0]]
+            [[1],[1],[1]], 
+            [[0.5, 0.5], [0.5*0.6, 0.5*0.6], [0.5*0.6*0.6, 0.5*0.6*0.6]] # jeśli nie zrobi się różnych ścieżek początkowych to zawsze wyjdą takie same wszystkie
             ),
     ]
     )
 def test_autoregressor_with_mask_with_dynamic_rnn(probabilities_with_start_element_no_third, batch_size, allowed, expected):
     seq_len = 3
     DISTRIBUTION_SIZE = 3
-    masking = ElementProbabilityMasking(allowed, DISTRIBUTION_SIZE, tf.identity)
+    masking = ElementProbabilityMasking(allowed, DISTRIBUTION_SIZE, 1, 3, lambda x: x-1)
     model = MockModelLayer(probabilities_with_start_element_no_third, history_entry_dims=(1,))
     regresor = AutoregressionWithAlternativePathsStep(
         2, 
@@ -121,9 +125,13 @@ def test_autoregressor_with_mask_with_dynamic_rnn(probabilities_with_start_eleme
     output, states = tf.nn.dynamic_rnn(regresor, inputs, sequence_length=[seq_len]*batch_size, dtype=tf.float32)
     with tf.Session() as sess:
         r_output,r_states = sess.run((output, states))
-    assert r_output == approx([
-        expected,
-        ]*batch_size)
+    assert r_output == approx(
+            np.array(
+                [
+                expected,
+                ]*batch_size
+            )
+        )
 
 
 def test_step_call(probabilities_with_start_element_no_third):

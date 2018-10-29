@@ -56,7 +56,7 @@ BATCH_SIZE = len(expected_mask())
 )
 def test_call(allowed, expected_mask, steps, mask_slice):
     DISTRIBUTION_SIZE = 10
-    masking = ElementProbabilityMasking(allowed, DISTRIBUTION_SIZE, tf.identity)
+    masking = ElementProbabilityMasking(allowed, DISTRIBUTION_SIZE, 0, 10, tf.identity)
     np.random.seed(0)
     probabilities = np.random.rand(len(expected_mask), DISTRIBUTION_SIZE)
     t_probabilities = tf.constant(probabilities, dtype=tf.float32)
