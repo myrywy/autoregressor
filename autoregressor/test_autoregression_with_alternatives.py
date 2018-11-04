@@ -192,7 +192,9 @@ def test_step_on_one_path(probabilities_with_start_element):
 
     zero_state_for_one_batch_element = AutoregressionState(*regresor._recurrent_apply(zero_state, lambda t: tf.gather(t, 0)))
 
-    conditional_probability, new_probability_model_states = regresor._compute_next_step_probability(zero_state_for_one_batch_element.step, zero_state_for_one_batch_element.paths, zero_state_for_one_batch_element.probability_model_states)
+    previuos_step_output = regresor._get_ids_in_step(zero_state_for_one_batch_element.paths, zero_state_for_one_batch_element.step-1)
+
+    conditional_probability, new_probability_model_states = regresor.next_element_generator._compute_next_step_probability(previuos_step_output, zero_state_for_one_batch_element.probability_model_states)
 
     input = tf.zeros((1, 1), tf.int32)
     output1, state1 = regresor.call(input, zero_state)
@@ -221,7 +223,7 @@ def test__compute_next_step_probability(probabilities, target_step, path, expect
     
     # To jest jednoczesnie numer słowa, który będzie feedowany do modelu prawd. war. Ma to sens bo jak chcemy przewidzieć
     # n-te słowo to musimy podać n-1-sze przy założeniu, że resza informacji o kontekście jest przechowywana w stanie modelu pr. war.
-    current_autoregressor_step = tf.constant([target_step-1], name="init_step") 
+    current_autoregressor_step = tf.constant([target_step], name="init_step") 
     # To jest to co (udajemy, że) do tej pory wygenerował autoregresor.
 
     paths = tf.constant([path], name="init_path")[:,:,0] # dodanie wymiaru batcha i redukcja jednoelementowych embeddingsów do skalarnych id-ków
@@ -236,7 +238,8 @@ def test__compute_next_step_probability(probabilities, target_step, path, expect
 
     model = MockModelLayer(probabilities, first_dim_is_batch=True)
     regresor = AutoregressionWithAlternativePathsStep(1, model, 3, False)
-    next_step_probability_dist, _ = regresor._compute_next_step_probability(current_autoregressor_step, paths, model_state)
+    previuos_step_output = regresor._get_ids_in_step(paths, current_autoregressor_step-1)
+    next_step_probability_dist, _ = regresor.next_element_generator._compute_next_step_probability(previuos_step_output, model_state)
     with tf.Session() as sess:
         r_prob_dist = sess.run(next_step_probability_dist)
     assert r_prob_dist == approx([expected_prob_dist])

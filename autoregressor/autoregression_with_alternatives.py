@@ -41,7 +41,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         self.probability_model_initial_input = tf.identity(probability_model_initial_input)
         self.id_to_embedding_mapping = id_to_embedding_mapping
         self.probability_masking_layer = probability_masking_layer
-
+        self.next_element_generator = NextElementGenerator(conditional_probability_model, id_to_embedding_mapping)
 
     @property
     def state_size(self):
@@ -107,8 +107,21 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         """This function takes N sequences with probabilites assigned to them and produces M output sequences and their probabilites according to 
         a conditional probability model. Each of output sequences is one of inputs sequences with an exactly one element appended at the end. 
         Output sequences are sorted with respect to their probabelity."""
-        conditional_probability, new_probability_model_states = self._compute_next_step_probability(step-1, input_sequences, probability_model_state)
-        temp_path_probabilities = tf.transpose(tf.transpose(conditional_probability) * input_probabilities) # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
+        previuos_step_output = self._get_ids_in_step(input_sequences, step-1)
+        '''previuos_step_output = tf.gather_nd(input_sequences, 
+                tf.concat(
+                    (
+                        tf.expand_dims(tf.range(0, tf.shape(step-1)[0], name="range_path_number"), axis=1, name="expand_path_number"),
+                        tf.expand_dims(step-1, axis=1, name="expand_step")
+                        ), 
+                    axis=1,
+                    name="concat_indices_to_gather")
+            )'''
+        temp_path_probabilities, new_probability_model_states = self.next_element_generator.call(
+            previous_step_output=previuos_step_output, 
+            input_probabilities=input_probabilities, 
+            probability_model_state=probability_model_state)
+
         if self.probability_masking_layer is not None:
             masked_probabilities = self.probability_masking_layer(temp_path_probabilities, step=step)
         else:
@@ -138,20 +151,25 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         output = tf.identity(new_probabilities, name="regressor_step_output")
         return output, new_state
 
-    def _compute_next_step_probability(self, step, paths, model_states):
-        previuos_step_output = tf.gather_nd(paths, 
+    def _get_ids_in_step(self, input_sequences, step):
+        return tf.gather_nd(input_sequences, 
                 tf.concat(
                     (
-                        tf.expand_dims(tf.range(0, tf.shape(step)[0], name="range_path_number"), axis=1, name="expand_path_number"),
-                        tf.expand_dims(step, axis=1, name="expand_step")
+                        tf.expand_dims(
+                            tf.range(
+                                0, 
+                                tf.shape(step)[0], 
+                                name="range_path_number"), 
+                            axis=1, 
+                            name="expand_path_number"),
+                        tf.expand_dims(
+                            step, 
+                            axis=1, 
+                            name="expand_step")
                         ), 
                     axis=1,
                     name="concat_indices_to_gather")
             )
-        previuos_step_embeddings = self.id_to_embedding_mapping(previuos_step_output)
-        return self.conditional_probability_model(
-            previuos_step_embeddings, 
-            model_states)
 
     def _recurrent_gather(self, t, indices):
         if isinstance(t, tuple):
@@ -218,3 +236,31 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
                 batch[:, index[0]+1:]
                 ),
             axis=1)
+
+
+class NextElementGenerator:
+    def __init__(
+        self,
+        conditional_probability_model,
+        id_to_embedding_mapping,
+        probability_aggregation_op=tf.multiply, # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
+    ):
+        self.conditional_probability_model = conditional_probability_model
+        self.id_to_embedding_mapping = id_to_embedding_mapping
+        self.probability_aggregation_op = probability_aggregation_op
+
+    def call(self, previous_step_output, input_probabilities, probability_model_state):
+        conditional_probability, new_probability_model_states = self._compute_next_step_probability(previous_step_output, probability_model_state)
+        aggregated_continuation_probabilities = tf.transpose(
+                self.probability_aggregation_op(
+                    tf.transpose(conditional_probability), input_probabilities, name="next_step_probability_aggregation"
+                    )
+                )
+        return aggregated_continuation_probabilities, new_probability_model_states
+
+    def _compute_next_step_probability(self, previous_step_output, model_states):
+        # ??????? ach, gdzie ten kod, gdzie on powinien być?
+        previuos_step_embeddings = self.id_to_embedding_mapping(previous_step_output)
+        return self.conditional_probability_model(
+            previuos_step_embeddings, 
+            model_states)
