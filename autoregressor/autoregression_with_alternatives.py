@@ -41,7 +41,8 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         self.probability_model_initial_input = tf.identity(probability_model_initial_input)
         self.id_to_embedding_mapping = id_to_embedding_mapping
         self.probability_masking_layer = probability_masking_layer
-        self.next_element_generator = NextElementGenerator(conditional_probability_model, id_to_embedding_mapping)
+        self.conditional_probability_model_feeder = ConditionalProbabilityModelFeeder(conditional_probability_model, id_to_embedding_mapping)
+        self.next_element_generator = NextElementGenerator(self.conditional_probability_model_feeder)
 
     @property
     def state_size(self):
@@ -241,16 +242,14 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
 class NextElementGenerator:
     def __init__(
         self,
-        conditional_probability_model,
-        id_to_embedding_mapping,
+        conditional_probability_model_feeder,
         probability_aggregation_op=tf.multiply, # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
     ):
-        self.conditional_probability_model = conditional_probability_model
-        self.id_to_embedding_mapping = id_to_embedding_mapping
+        self.conditional_probability_model_feeder = conditional_probability_model_feeder
         self.probability_aggregation_op = probability_aggregation_op
 
     def call(self, previous_step_output, input_probabilities, probability_model_state):
-        conditional_probability, new_probability_model_states = self._compute_next_step_probability(previous_step_output, probability_model_state)
+        conditional_probability, new_probability_model_states = self.conditional_probability_model_feeder.call(previous_step_output, probability_model_state)
         aggregated_continuation_probabilities = tf.transpose(
                 self.probability_aggregation_op(
                     tf.transpose(conditional_probability), input_probabilities, name="next_step_probability_aggregation"
@@ -258,9 +257,18 @@ class NextElementGenerator:
                 )
         return aggregated_continuation_probabilities, new_probability_model_states
 
-    def _compute_next_step_probability(self, previous_step_output, model_states):
-        # ??????? ach, gdzie ten kod, gdzie on powinien być?
+
+class ConditionalProbabilityModelFeeder:
+    def __init__(
+        self,
+        conditional_probability_model,
+        id_to_embedding_mapping
+        ):
+        self.conditional_probability_model = conditional_probability_model
+        self.id_to_embedding_mapping = id_to_embedding_mapping
+    
+    def call(self, previous_step_output, model_state):
         previuos_step_embeddings = self.id_to_embedding_mapping(previous_step_output)
         return self.conditional_probability_model(
             previuos_step_embeddings, 
-            model_states)
+            model_state)

@@ -194,7 +194,7 @@ def test_step_on_one_path(probabilities_with_start_element):
 
     previuos_step_output = regresor._get_ids_in_step(zero_state_for_one_batch_element.paths, zero_state_for_one_batch_element.step-1)
 
-    conditional_probability, new_probability_model_states = regresor.next_element_generator._compute_next_step_probability(previuos_step_output, zero_state_for_one_batch_element.probability_model_states)
+    conditional_probability, new_probability_model_states = regresor.conditional_probability_model_feeder.call(previuos_step_output, zero_state_for_one_batch_element.probability_model_states)
 
     input = tf.zeros((1, 1), tf.int32)
     output1, state1 = regresor.call(input, zero_state)
@@ -239,7 +239,7 @@ def test__compute_next_step_probability(probabilities, target_step, path, expect
     model = MockModelLayer(probabilities, first_dim_is_batch=True)
     regresor = AutoregressionWithAlternativePathsStep(1, model, 3, False)
     previuos_step_output = regresor._get_ids_in_step(paths, current_autoregressor_step-1)
-    next_step_probability_dist, _ = regresor.next_element_generator._compute_next_step_probability(previuos_step_output, model_state)
+    next_step_probability_dist, _ = regresor.conditional_probability_model_feeder.call(previuos_step_output, model_state)
     with tf.Session() as sess:
         r_prob_dist = sess.run(next_step_probability_dist)
     assert r_prob_dist == approx([expected_prob_dist])
