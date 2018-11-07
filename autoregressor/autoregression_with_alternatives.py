@@ -4,14 +4,110 @@ import tensorflow as tf
 
 AutoregressionState = namedtuple("AutoregressionState", ["step", "paths", "path_probabilities", "probability_model_states"])
 
+
+class AutoregressionInitializer:
+    """
+    Class that creates n one-element paths from initial input (e.g. id of special <START> element). 
+    
+    Initial input should be one sequence of element IDs per batch (possibly one-element sequence per batch).
+    Probability distribution predicted by the conditional probability model after consuming all initial input elements is used to chose n most probable next elements.
+    n output paths are created by appending initial input sequence with each of these n elements.
+    
+    Input dims: 
+        b x i: (b - batch size - each element is an initial input element to conditional probability model)
+    Output dims:
+        b x n x (i+1): (b - batch size; n - number of alternative paths)
+
+    Args:
+        conditional_probability_model (tf.nn.rnn_cell.RNNCell): Layer object that takes input and state and returns output and new state with output interpreted as a probability distribution of being the next element over elements from some finate vocabulary. 
+        number_of_ouput_paths (int): how many alternative paths (per batch element) will be created.
+        index_in_probability_distribution_to_element_id_mapping: layer or tensorflow op that takes index in probability distribution produced by conditional_probability_model and returns id of corresponding element of the vocabulary.
+    """
+    def __init__(self, conditional_probability_model, number_of_ouput_paths, index_in_probability_distribution_to_element_id_mapping):
+        self.conditional_probability_model = conditional_probability_model
+        self.number_of_ouput_paths = number_of_ouput_paths, 
+        self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
+
+    def call(self, input):
+        """
+        Args:
+            input: tensor of dimemsions [batch, initial_sequence_length] and integer type (tf.int32).
+        
+        Returns:
+            paths: tensor of dimemsions [batch, number_of_ouput_paths, initial_sequence_length+1] and type the same as input.
+            paths_probabilites: tensor of dimensions [batch, number_of_ouput_paths] and type the same as conditional probability  
+        """
+        raise NotImplementedError
+
+class AutoregressionExtender:
+    """
+    Class that takes n paths and generates additional k elements of this paths.
+    Input dims: 
+        b x n x l: (b - batch size; n - number of alternative paths; l - number of elements in each of paths)
+    Output dims:
+        b x n x (l+k): (b - batch size; n - number of alternative paths; k - number of newly generated elements in each of paths)
+
+    Args:
+        autoregression_step (tf.nn.rnn_cell.RNNCell): recursive layer that takes no meaningful input and AutoregressionState as state and appends one element to paths in the state at each call; it must be able to be called at least number_of_elements_to_generate.
+        number_of_elements_to_generate (int): numbers of elements that will be appended to path == number of calls of autoregression_step
+    """
+    def __init__(self, autoregression_step, number_of_elements_to_generate):
+        self.autoregression_step = autoregression_step
+        self.number_of_elements_to_generate = number_of_elements_to_generate
+
+    def call(self, paths, probabilites):
+    """
+    Args:
+        paths (tf.Tensor): paths that are to be extended, dimensions - [batch, path, element]
+        paths_probabilites (tf.Tensor): probabilites of paths that are to be extended, dimensions - [batch, path]
+    """
+    raise NotImplementedError
+
+class AutoregressionBroadcaster:
+    """
+    Class that performs takes tensor of n paths, re-writes it to vector of m paths and generates additional k elements of this paths.
+    Input dims: 
+        b x n x l: (b - batch size; n - number of alternative paths; l - number of elements in each of paths)
+    Output dims:
+        b x m x l: (b - batch size; n - number of alternative paths; k - number of newly generated elements in each of paths)
+
+    If m == n then input == output.
+    If m > n then first n paths of output are equal to corresponding paths of input and remaining m-n paths are filled with zeros and have probability of 0.0.
+    If m < n then m paths of output are equal to corresponding first m paths of input. It is therefore important for input to be sorted by probability.
+    
+    Args:
+        output_alternative_paths_number (int): how much alternative paths will be included in output paths and corresponding paths probabilities
+    """
+    def __init__(self, output_alternative_paths_number):
+        self.output_alternative_paths_number = output_alternative_paths_number
+
+    def call(self, paths, paths_probabilites):
+        """Choses self.output_alternative_paths_number alternative paths from input, fills with zero if there is not enough paths in input. 
+        
+        It is assumed that the first dimension is batch index, the second is alternative path index and the third is element-in-path index
+        Args:
+            paths (tf.Tensor): paths that are to be broadcasted, dimensions - [batch, path, element]
+            paths_probabilites (tf.Tensor): probabilites of paths that are to be broadcasted, dimensions - [batch, path]
+        
+        Returns:
+            broadcasted_paths: Tensor of dimensions [batch size, self.output_alternative_paths_number, number of elements] and type the same as paths
+            broadcasted_paths_probabilites: Tensor of dimensions [batch size, self.output_alternative_paths_number] and type the same as paths_probabilites
+        """
+        raise NotImplementedError
+
+
 class AutoregressionWithAlternativePaths(tf.keras.layers.Layer):
     def __init__(self,
+            autoregression_step_builder,
             number_of_alternatives,
-            conditional_probability_model,
             output_sequence_length):
+            """
+            Args:
+                autoregression_step_builder (Function[(int, int),tf.nn.rnn_cell.RNNCell]): callable -> 
+            """
         self.output_sequence_length = output_sequence_length
         self.number_of_alternatives = number_of_alternatives
-        self.conditional_probability_model,
+        self.conditional_probability_model = conditional_probability_model
 
     def compute_output_shape(self, input_shape):
         return (self.number_of_alternatives, self.output_sequence_length)
@@ -33,6 +129,10 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             id_to_embedding_mapping=lambda x: tf.expand_dims(x,1),
             probability_masking_layer=None,
             ):
+        """
+        Args:
+            max_output_sequence_length: maximum number of elements that are to be generated
+        """
         super(AutoregressionWithAlternativePathsStep, self).__init__()
         self.number_of_alternatives = number_of_alternatives
         self.conditional_probability_model = conditional_probability_model
@@ -243,7 +343,7 @@ class NextElementGenerator:
     def __init__(
         self,
         conditional_probability_model_feeder,
-        probability_aggregation_op=tf.multiply, # TODO: to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
+        probability_aggregation_op=tf.multiply, # to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
     ):
         self.conditional_probability_model_feeder = conditional_probability_model_feeder
         self.probability_aggregation_op = probability_aggregation_op
