@@ -56,12 +56,12 @@ class AutoregressionExtender:
         self.number_of_elements_to_generate = number_of_elements_to_generate
 
     def call(self, paths, probabilites):
-    """
-    Args:
-        paths (tf.Tensor): paths that are to be extended, dimensions - [batch, path, element]
-        paths_probabilites (tf.Tensor): probabilites of paths that are to be extended, dimensions - [batch, path]
-    """
-    raise NotImplementedError
+        """
+        Args:
+            paths (tf.Tensor): paths that are to be extended, dimensions - [batch, path, element]
+            paths_probabilites (tf.Tensor): probabilites of paths that are to be extended, dimensions - [batch, path]
+        """
+        raise NotImplementedError
 
 class AutoregressionBroadcaster:
     """
@@ -101,10 +101,10 @@ class AutoregressionWithAlternativePaths(tf.keras.layers.Layer):
             autoregression_step_builder,
             number_of_alternatives,
             output_sequence_length):
-            """
-            Args:
-                autoregression_step_builder (Function[(int, int),tf.nn.rnn_cell.RNNCell]): callable -> 
-            """
+        """
+        Args:
+            autoregression_step_builder (Function[(int, int),tf.nn.rnn_cell.RNNCell]): callable -> 
+        """
         self.output_sequence_length = output_sequence_length
         self.number_of_alternatives = number_of_alternatives
         self.conditional_probability_model = conditional_probability_model
