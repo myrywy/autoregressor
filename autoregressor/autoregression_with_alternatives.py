@@ -19,7 +19,9 @@ class AutoregressionInitializer:
         b x n x (i+1): (b - batch size; n - number of alternative paths)
 
     Args:
-        conditional_probability_model (tf.nn.rnn_cell.RNNCell): Layer object that takes input and state and returns output and new state with output interpreted as a probability distribution of being the next element over elements from some finate vocabulary. 
+        conditional_probability_model (tf.nn.rnn_cell.RNNCell): 
+            Layer object that takes input and state and returns output and new state with output interpreted as a probability distribution of being the next element over elements from some finate vocabulary. 
+            If conditional_probability_model_initial_state is not provided as `call` argiment, then conditional_probability_model.zero_state() is used as initial state.
         number_of_ouput_paths (int): how many alternative paths (per batch element) will be created.
         index_in_probability_distribution_to_element_id_mapping: layer or tensorflow op that takes index in probability distribution produced by conditional_probability_model and returns id of corresponding element of the vocabulary.
     """
@@ -28,14 +30,17 @@ class AutoregressionInitializer:
         self.number_of_ouput_paths = number_of_ouput_paths, 
         self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
 
-    def call(self, input):
+    def call(self, input, conditional_probability_model_initial_state=None):
         """
         Args:
             input: tensor of dimemsions [batch, initial_sequence_length] and integer type (tf.int32).
+            conditional_probability_model_initial_state: If provided, it is used instead of conditional_probability_model.zero_state() as initial state in first call to the model.
         
         Returns:
             paths: tensor of dimemsions [batch, number_of_ouput_paths, initial_sequence_length+1] and type the same as input.
-            paths_probabilites: tensor of dimensions [batch, number_of_ouput_paths] and type the same as conditional probability  
+            paths_probabilites: tensor of dimensions [batch, number_of_ouput_paths] and type the same as conditional probability
+            states: tensor of dimensions [batch, number_of_ouput_paths] + <dimensions of conditional_probability_model_state>.
+                It contains final state of conditional_probability model (i.e. after consuming whole input) replicated number_of_ouput_paths times (independently for each sequence in batch).
         """
         raise NotImplementedError
 
@@ -55,11 +60,13 @@ class AutoregressionExtender:
         self.autoregression_step = autoregression_step
         self.number_of_elements_to_generate = number_of_elements_to_generate
 
-    def call(self, paths, probabilites):
+    def call(self, paths, probabilites, state):
         """
         Args:
             paths (tf.Tensor): paths that are to be extended, dimensions - [batch, path, element]
             paths_probabilites (tf.Tensor): probabilites of paths that are to be extended, dimensions - [batch, path]
+            state: tensor of dimensions [batch, number_of_ouput_paths, *dimensions_of_conditional_probability_model_state].
+                It will be used as "initial" state of conditional_probability_model for autoregression
         """
         raise NotImplementedError
 
@@ -77,21 +84,26 @@ class AutoregressionBroadcaster:
     
     Args:
         output_alternative_paths_number (int): how much alternative paths will be included in output paths and corresponding paths probabilities
+        zaro_state=None: if m > n then lacking elements of state are tiled with these. It can be tensor or (possibly nested) tuple of tensor without batch dimension.
+            In such a case it is an obligatory argument
     """
-    def __init__(self, output_alternative_paths_number):
+    def __init__(self, output_alternative_paths_number, zero_state=None):
         self.output_alternative_paths_number = output_alternative_paths_number
+        self.zero_state = zero_state
 
-    def call(self, paths, paths_probabilites):
+    def call(self, paths, paths_probabilites, state):
         """Choses self.output_alternative_paths_number alternative paths from input, fills with zero if there is not enough paths in input. 
         
         It is assumed that the first dimension is batch index, the second is alternative path index and the third is element-in-path index
         Args:
             paths (tf.Tensor): paths that are to be broadcasted, dimensions - [batch, path, element]
             paths_probabilites (tf.Tensor): probabilites of paths that are to be broadcasted, dimensions - [batch, path]
+            state: states of conditional probability model arranged as either tensor or (possibly nested) tuple of tensors of a form [batch, paths, *state_dimensions]
         
         Returns:
             broadcasted_paths: Tensor of dimensions [batch size, self.output_alternative_paths_number, number of elements] and type the same as paths
             broadcasted_paths_probabilites: Tensor of dimensions [batch size, self.output_alternative_paths_number] and type the same as paths_probabilites
+            broadcasted_states: Tensor of dimensions [batch size, self.output_alternative_paths_number, *state_dimensions] (or (nested) tuple of such tensors) and types the same as original `state`
         """
         raise NotImplementedError
 

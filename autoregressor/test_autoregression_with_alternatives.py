@@ -86,7 +86,6 @@ def test_autoregressor_with_dynamic_rnn(probabilities_with_start_element_no_thir
         )
 
 
-
 @pytest.mark.parametrize(
     "batch_size, allowed, expected", 
     [
@@ -338,3 +337,1529 @@ def test__insert(batch, values, indices, expected):
         result = sess.run(new_batch)
 
     assert result == approx(expected)
+
+
+@pytest.mark.parametrize("paths, paths_probabilities, states, zero_state, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states",
+    [
+        ( # case: output is smaller
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                ]
+            ],
+            None,
+            2,
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                ]
+            ],
+        ),
+        ( # case: the same input and output size, nothing changes
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                ]
+            ],
+            None,
+            3,
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                ]
+            ],
+        ),
+        ( # case: output is larger
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                ]
+            ],
+            [0,0,0],
+            4,
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                    [0,0,0,0],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                    [0,0,0,0],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                    0.0,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                    0.0,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                    [0,0,0],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                    [0,0,0],
+                ]
+            ],
+        ),
+    ]
+)
+def test_AutoregressionBroadcaster(paths, paths_probabilities, states, zero_state, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states):
+    broadcaster = AutoregressionBroadcaster(number_of_output_paths, zero_state=zero_state)
+    output_paths, output_paths_probabilities = broadcaster.call(paths, paths_probabilities, states)
+    with tf.Session() as sess:
+        result_paths, result_paths_probabilites = sess.run((output_paths, output_paths_probabilities))
+    assert result_paths == approx(expected_paths)
+    assert result_paths_probabilites == approx(expected_paths_probabilities)
+
+
+@pytest.mark.parametrize("paths, paths_probabilities, states, zero_state, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states",
+    [
+        ( # case: output is larger
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                ]
+            ],
+            tf.constant([0,0,0]),
+            4,
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                    [0,0,0,0],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                    [0,0,0,0],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                    0.0,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                    0.0,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                    [0,0,0],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                    [0,0,0],
+                ]
+            ],
+        ),
+        ( # case: output is larger
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                ]
+            ],
+            tf.constant([1,2,3]),
+            4,
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                    [0,0,0,0],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                    [0,0,0,0],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                    0.0,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                    0.0,
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    [11,11,11], 
+                    [12,12,12],
+                    [13,13,13],
+                    [1,2,3],
+                ],
+                [ # paths level
+                    [21,21,21], 
+                    [22,22,22],
+                    [23,23,23],
+                    [1,2,3],
+                ]
+            ],
+        ),
+        ( # case: output is larger
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                ],
+            ],
+            (
+                tf.constant(
+                        [ # batch level
+                            [ # path level
+                                [101,102,103],
+                                [201,202,203],
+                                [301,302,303],
+                            ]
+                        ]
+                    ),
+                (
+                    tf.constant(
+                            [ # batch level
+                                [ # path level
+                                    [104,105,106],
+                                    [204,205,206],
+                                    [304,305,306],
+                                ]
+                            ]
+                        ),
+                    tf.constant(
+                            [ # batch level
+                                [ # path level
+                                    [107,108,109],
+                                    [207,208,209],
+                                    [307,308,309],
+                                ]
+                            ]
+                        )
+                )
+            ),
+            (tf.constant([1,2,3]),(tf.constant([4,5,6]),tf.constant([7,8,9]))),
+            4,
+            [ # batch level
+                [ # paths level
+                    [1,2,3,4],
+                    [5,6,7,8],
+                    [9,10,11,12],
+                    [0,0,0,0],
+                ],
+                [ # paths level
+                    [13,14,15,16],
+                    [17,18,19,20],
+                    [21,22,23,24],
+                    [0,0,0,0],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.1,
+                    0.2,
+                    0.3,
+                    0.0,
+                ],
+                [ # paths level
+                    0.4,
+                    0.5,
+                    0.6,
+                    0.0,
+                ],
+            ],
+            (
+                tf.constant(
+                        [ # batch level
+                            [ # path level
+                                [101,102,103],
+                                [201,202,203],
+                                [301,302,303],
+                                [1,2,3],
+                            ]
+                        ]
+                    ),
+                (
+                    tf.constant(
+                            [ # batch level
+                                [ # path level
+                                    [104,105,106],
+                                    [204,205,206],
+                                    [304,305,306],
+                                    [4,5,6],
+                                ]
+                            ]
+                        ),
+                    tf.constant(
+                            [ # batch level
+                                [ # path level
+                                    [107,108,109],
+                                    [207,208,209],
+                                    [307,308,309],
+                                    [7,8,9],
+                                ]
+                            ]
+                        )
+                )
+            ),
+        ),
+    ]
+)
+def test_AutoregressionBroadcaster_with_explicitly_specified_zero_state(paths, paths_probabilities, states, zero_state, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states):
+    broadcaster = AutoregressionBroadcaster(number_of_output_paths)
+    output_paths, output_paths_probabilities = broadcaster.call(paths, paths_probabilities, states, zero_state=zero_state)
+    with tf.Session() as sess:
+        result_paths, result_paths_probabilites = sess.run((output_paths, output_paths_probabilities))
+    assert result_paths == approx(expected_paths)
+    assert result_paths_probabilites == approx(expected_paths_probabilities)
+
+
+@pytest.mark.parametrize("input, number_of_output_paths, expected_paths, expected_paths_probabilities",
+    [
+        (
+            [ # batch level
+                [1], # one-element input sequence
+                [2], # one-element input sequence
+            ],
+            3,
+            [ # batch level
+                [ # paths level
+                    [1, 1], # path
+                    [1, 2],
+                    [1, 3],
+                ],
+                [ # paths level
+                    [1, 3], # path
+                    [1, 1],
+                    [1, 2],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.6, # path probability
+                    0.4,
+                    0.0
+                ],
+                [ # paths level
+                    1.0, # path probability
+                    0.0,
+                    0.0
+                ]
+            ],
+        ),
+        (
+            [ # batch level
+                [1], # one-element input sequence
+            ],
+            3,
+            [ # batch level
+                [ # paths level
+                    [1, 1], # path
+                    [1, 2],
+                    [1, 3],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.6, # path probability
+                    0.4,
+                    0.0
+                ],
+            ],
+        ),
+        (
+            [ # batch level
+                [2], # one-element input sequence
+            ],
+            3,
+            [ # batch level
+                [ # paths level
+                    [1, 3], # path
+                    [1, 1],
+                    [1, 2],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    1.0, # path probability
+                    0.0,
+                    0.0
+                ]
+            ],
+        ),
+        (
+            [ # batch level
+                [1], # one-element input sequence
+                [2], # one-element input sequence
+            ],
+            1,
+            [ # batch level
+                [ # paths level
+                    [1, 1], # path
+                ],
+                [ # paths level
+                    [1, 3], # path
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.6, # path probability
+                ],
+                [ # paths level
+                    1.0, # path probability
+                ]
+            ],
+        ),
+        (
+            [ # batch level
+                [1,1], # two-element input sequence
+                [1,2], # two-element input sequence
+            ],
+            3,
+            [ # batch level
+                [ # paths level
+                    [1, 1, 1], # path
+                    [1, 1, 2],
+                    [1, 1, 3],
+                ],
+                [ # paths level
+                    [1, 2, 1], # path
+                    [1, 2, 2],
+                    [1, 2, 3],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.6, # path probability
+                    0.4,
+                    0.0
+                ],
+                [ # paths level
+                    0.95, # path probability
+                    0.05,
+                    0.0
+                ]
+            ],
+        ),
+    ]
+)
+def test_AutoregressionInitializer(probabilities, input, number_of_output_paths, expected_paths, expected_paths_probabilities):
+    conditional_probability_model = MockModelLayer(probabilities, first_dim_is_batch=True, history_entry_dims=(1,))
+    paths_initializer = AutoregressionInitializer(conditional_probability_model, number_of_output_paths, lambda i: i+1)
+    paths, paths_probabilities, _ = paths_initializer.call(input)
+    with tf.Session() as sess:
+        result_paths, result_paths_probabilities = sess.run((paths, paths_probabilities))
+    assert result_paths == approx(expected_paths)
+    assert result_paths_probabilities == approx(expected_paths_probabilities)
+    
+
+
+@pytest.mark.parametrize("input, number_of_output_paths, expected_paths, expected_paths_probabilities",
+    [
+        (
+            [ # batch level
+                [1], # one-element input sequence
+                [2], # one-element input sequence
+            ],
+            3,
+            [ # batch level
+                [ # paths level
+                    [1, 1], # path
+                    [1, 2],
+                    [1, 3],
+                ],
+                [ # paths level
+                    [1, 3], # path
+                    [1, 1],
+                    [1, 2],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.6, # path probability
+                    0.4,
+                    0.0
+                ],
+                [ # paths level
+                    1.0, # path probability
+                    0.0,
+                    0.0
+                ]
+            ],
+        ),
+        (
+            [ # batch level
+                [1], # one-element input sequence
+            ],
+            3,
+            [ # batch level
+                [ # paths level
+                    [1, 1], # path
+                    [1, 2],
+                    [1, 3],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.6, # path probability
+                    0.4,
+                    0.0
+                ],
+            ],
+        ),
+        (
+            [ # batch level
+                [2], # one-element input sequence
+            ],
+            3,
+            [ # batch level
+                [ # paths level
+                    [1, 3], # path
+                    [1, 1],
+                    [1, 2],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    1.0, # path probability
+                    0.0,
+                    0.0
+                ]
+            ],
+        ),
+        (
+            [ # batch level
+                [1], # one-element input sequence
+                [2], # one-element input sequence
+            ],
+            1,
+            [ # batch level
+                [ # paths level
+                    [1, 1], # path
+                ],
+                [ # paths level
+                    [1, 3], # path
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.6, # path probability
+                ],
+                [ # paths level
+                    1.0, # path probability
+                ]
+            ],
+        ),
+        (
+            [ # batch level
+                [1,1], # two-element input sequence
+                [1,2], # two-element input sequence
+            ],
+            3,
+            [ # batch level
+                [ # paths level
+                    [1, 1, 1], # path
+                    [1, 1, 2],
+                    [1, 1, 3],
+                ],
+                [ # paths level
+                    [1, 2, 1], # path
+                    [1, 2, 2],
+                    [1, 2, 3],
+                ],
+            ],
+            [ # batch level
+                [ # paths level
+                    0.6, # path probability
+                    0.4,
+                    0.0
+                ],
+                [ # paths level
+                    0.95, # path probability
+                    0.05,
+                    0.0
+                ]
+            ],
+        ),
+    ]
+)
+def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input, number_of_output_paths, expected_paths, expected_paths_probabilities):
+    history_entry_dims = (1,)
+    conditional_probability_model = MockModelLayer(probabilities, first_dim_is_batch=True, history_entry_dims=history_entry_dims)
+    paths_initializer = AutoregressionInitializer(conditional_probability_model, number_of_output_paths, lambda i: i+1)
+    batch_size = 2
+    history_size = 3 
+    zero_state = (
+        tf.constant(0), 
+        tf.zeros(
+            shape=(batch_size, history_size, *history_entry_dims), 
+            dtype=tf.int32
+            )
+        )
+    paths, paths_probabilities, _ = paths_initializer.call(input, conditional_probability_model_initial_state=zero_state)
+    with tf.Session() as sess:
+        result_paths, result_paths_probabilities = sess.run((paths, paths_probabilities))
+    assert result_paths == approx(expected_paths)
+    assert result_paths_probabilities == approx(expected_paths_probabilities)
+
+
+    probabilities = {
+        (-1,0,0,0):[0.5, 0.5, 0.0], # początek historii
+
+        (-1,1,0,0):[0.6, 0.4, 0.0], # a
+        (-1,2,0,0):[0.0, 0.0, 1.0], # b
+        
+        (-1,1,1,0):[0.6, 0.4, 0.0], # aa
+        (-1,1,2,0):[0.95, 0.05, 0.0], # ab
+        (-1,2,1,0):[0.0, 0.0, 1.0], # ba
+        (-1,2,2,0):[0.0, 0.0, 1.0], # bb
+        }
+
+@pytest.mark.parametrize("input_sequence, input_probabilities, input_states, output_sequence, output_pobabilities, output_states, steps", 
+    [
+        ( # case 1 - one-element batch, one patch
+            # INPUT
+            # input sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st (and only) path
+                        -1, # the only element of path
+                    ],
+                ],
+            ],
+            # input probabilities
+            [
+                [ # 1. batch element
+                    1.0, # 1-st (and olny) path probability
+                ],
+            ],
+            # input states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    0, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                ],
+                [
+                    [ # history tensor for the first patch
+                        [0],[0],[0],[0],
+                    ],
+                ],
+            ),
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st (and only) path
+                        -1, 1, # a path extended with one element (of id 1 - it has the same conditional prob. as 2 so 1 is chosen as the first in prob-dist vector)
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.5, # 1-st (and olny) path probability
+                ],
+            ],
+            # output states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                ],
+                [
+                    [ # history tensor for the first patch
+                        [-1],[0],[0],[0],
+                    ],
+                ],
+            ),
+            # STEPS
+            1,
+        ),
+        ( # case 2 - one-element batch, two patches but one is zero-filled with zero probability (like an output from AutoregressorInitializer could be)
+            # INPUT
+            # input sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 
+                    ],
+                    [ # 2-nd path
+                        0, 0,
+                    ],
+                ],
+            ],
+            # input probabilities
+            [
+                [ # 1. batch element
+                    0.5, # 1-st path probability
+                    0.0,
+                ],
+            ],
+            # input states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    1,
+                ],
+                [
+                    [ # history tensor for the first patch
+                        [-1],[0],[0],[0],
+                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                    ],
+                ],
+            ),
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 2,
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.6, # 1-st (and olny) path probability
+                    0.4
+                ],
+            ],
+            # output states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    2,
+                ],
+                [
+                    [ 
+                        [-1],[1],[0],[0], # history tensor for the first patch
+                        [-1],[1],[0],[0],
+                    ],
+                ],
+            ),
+            # STEPS
+            1,
+        ),
+        ( # case 3 - one-element batch, three patches but two are zero-filled with zero probability (like an output from AutoregressorInitializer could be)
+            # INPUT
+            # input sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1,
+                    ],
+                    [
+                        0, 0, 
+                    ],
+                    [
+                        0, 0, 
+                    ],
+                ],
+            ],
+            # input probabilities
+            [
+                [ # 1. batch element
+                    0.5, # 1-st path probability
+                    0.0,
+                    0.0,
+                ],
+            ],
+            # input states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    1,
+                    1,
+                ],
+                [
+                    [ # history tensor for the first patch
+                        [-1],[0],[0],[0],
+                    ],
+                    [
+                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                    ],
+                    [
+                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                    ],
+                ],
+            ),
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 2,
+                    ],
+                    [
+                        -1, 1, 3,
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.6, # 1-st (and olny) path probability
+                    0.4,
+                    0.0,
+                ],
+            ],
+            # output states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    2,
+                    2,
+                ],
+                [
+                    [ # history tensor for the first patch
+                        [-1],[1],[0],[0],
+                    ],
+                    [
+                        [-1],[1],[0],[0],
+                    ],
+                    [
+                        [-1],[1],[0],[0],
+                    ],
+                ],
+            ),
+            # STEPS
+            1,
+        ),
+        ( # case 4 - cont. of 2-nd
+            # INPUT
+            # input sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 1, 
+                    ],
+                    [
+                        -1, 1, 2,
+                    ],
+                ],
+            ],
+            # input probabilities
+            [
+                [ # 1. batch element
+                    0.6, # 1-st path probability
+                    0.4
+                ],
+            ],
+            # input states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    2,
+                ],
+                [
+                    [ 
+                        [-1],[1],[0],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[0],[0],
+                    ],
+                ],
+            ),
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 2, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 1, 1,
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.38, # 1-st path probability
+                    0.36
+                ],
+            ],
+            # output states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    3,
+                ],
+                [
+                    [ 
+                        [-1],[1],[2],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[1],[0],
+                    ],
+                ],
+            ),
+            # STEPS
+            1,
+        ),
+        ( # case 5 - like 4-th but with 3 paths, additional third path is zero-filled with zero probability (like after broadcasting)
+            # INPUT
+            # input sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 1, 
+                    ],
+                    [
+                        -1, 1, 2,
+                    ],
+                    [
+                        0, 0, 0,
+                    ],
+                ],
+            ],
+            # input probabilities
+            [
+                [ # 1. batch element
+                    0.6, # 1-st path probability
+                    0.4,
+                    0.0,
+                ],
+            ],
+            # input states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    2,
+                    2,
+                ],
+                [
+                    [ 
+                        [-1],[1],[0],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[0],[0],
+                    ],
+                    [
+                        [-1],[0],[0],[0],
+                    ],
+                ],
+            ),
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 2, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 1, 1,
+                    ],
+                    [
+                        -1, 1, 1, 2,
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.38, # 1-st path probability
+                    0.36,
+                    0.16,
+                ],
+            ],
+            # output states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    3,
+                    3,
+                ],
+                [
+                    [ 
+                        [-1],[1],[2],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[1],[0],
+                    ],
+                    [
+                        [-1],[1],[1],[0],
+                    ],
+                ],
+            ),
+            # STEPS
+            1,
+        ),
+        ( # case 6 - like 4-th but with 4 paths, additional third and fourth path is zero-filled with zero probability (like after broadcasting)
+            # INPUT
+            # input sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 1, 
+                    ],
+                    [
+                        -1, 1, 2,
+                    ],
+                    [
+                        0, 0, 0,
+                    ],
+                    [
+                        0, 0, 0,
+                    ],
+                ],
+            ],
+            # input probabilities
+            [
+                [ # 1. batch element
+                    0.6, # 1-st path probability
+                    0.4,
+                    0.0,
+                    0.0,
+                ],
+            ],
+            # input states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    2,
+                    2,
+                    2,
+                ],
+                [
+                    [ 
+                        [-1],[1],[0],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[0],[0],
+                    ],
+                    [
+                        [-1],[0],[0],[0],
+                    ],
+                    [
+                        [-1],[0],[0],[0],
+                    ],
+                ],
+            ),
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 2, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 1, 1,
+                    ],
+                    [
+                        -1, 1, 1, 2,
+                    ],
+                    [
+                        -1, 1, 2, 2,
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.38, # 1-st path probability
+                    0.36,
+                    0.16,
+                    0.02,
+                ],
+            ],
+            # output states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    3,
+                    3,
+                    3,
+                ],
+                [
+                    [ 
+                        [-1],[1],[2],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[1],[0],
+                    ],
+                    [
+                        [-1],[1],[1],[0],
+                    ],
+                    [
+                        [-1],[1],[2],[0],
+                    ],
+                ],
+            ),
+            # STEPS
+            1,
+        ),
+        ( # case 7 - cases 2, 4 at once
+            # INPUT
+            # input sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 
+                    ],
+                    [ # 2-nd path
+                        0, 0,
+                    ],
+                ],
+            ],
+            # input probabilities
+            [
+                [ # 1. batch element
+                    0.5, # 1-st path probability
+                    0.0,
+                ],
+            ],
+            # input states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    1,
+                ],
+                [
+                    [ # history tensor for the first patch
+                        [-1],[0],[0],[0],
+                    ],
+                    [
+                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                    ],
+                ],
+            ),
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 2, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 1, 1,
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.38, # 1-st path probability
+                    0.36
+                ],
+            ],
+            # output states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    3,
+                ],
+                [
+                    [ 
+                        [-1],[1],[2],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[1],[0],
+                    ],
+                ],
+            ),
+            # NUMBER OF STEPS TO MAKE (how much elents to produce)
+            2,
+        ),
+        ( # case 8 - cases 2 and 4 in one batch
+            # INPUT
+            # input sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 
+                    ],
+                    [ # 2-nd path
+                        0, 0,
+                    ],
+                ],
+                [ # 2-nd batch element
+                    [ # 1-st path
+                        -1, 1, 1, 
+                    ],
+                    [
+                        -1, 1, 2,
+                    ],
+                ],
+            ],
+            # input probabilities
+            [
+                [ # 1. batch element
+                    0.5, # 1-st path probability
+                    0.0,
+                ],
+                [ # 2. batch element
+                    0.38, # 1-st path probability
+                    0.36
+                ],
+            ],
+            # input states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    1,
+                    2,
+                    2,
+                ],
+                [
+                    [ # history tensor for the first patch
+                        [-1],[0],[0],[0],
+                    ],
+                    [
+                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                    ],
+                    [ 
+                        [-1],[1],[0],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[0],[0],
+                    ]
+                ],
+            ),
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 2,
+                    ],
+                ],
+                [ # 2-nd batch element
+                    [ # 1-st path
+                        -1, 1, 2, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 1, 1,
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.6, # 1-st (and olny) path probability
+                    0.4
+                ],
+                [ # 2. batch element
+                    0.38, # 1-st path probability
+                    0.36
+                ],
+            ],
+            # output states (using MockProbabilityModel with redundant step argument)
+            (
+                [ # step tensor
+                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    2,
+                    3,
+                    3,
+                ],
+                [
+                    [ 
+                        [-1],[1],[0],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[0],[0],
+                    ],
+                    [ 
+                        [-1],[1],[2],[0], # history tensor for the first patch
+                    ],
+                    [
+                        [-1],[1],[1],[0],
+                    ],
+                ],
+            ),
+            # STEPS
+            1,
+        ),
+    ]
+)
+def test_AutoregressionExtender(probabilities_with_start_element_no_third, input_sequence, input_probabilities, input_states, output_sequence, output_pobabilities, output_states, steps):
+    model = MockModelLayer(probabilities_with_start_element_no_third, history_entry_dims=(1,))
+    regresor_step = AutoregressionWithAlternativePathsStep(
+        2, 
+        model, 
+        steps, 
+        probability_model_initial_input=-1,
+        index_in_probability_distribution_to_element_id_mapping=lambda x: x+1)
+    
+    extender = AutoregressionExtender(regresor_step, steps)
+
+    paths, paths_probabilities = tf.constant(input_sequence), tf.constant(input_probabilities)
+    states = tuple(tf.constant(t) for t in input_states)
+    new_paths, new_path_probabilities, new_states = extender(paths, probabilites, states)
+
+    with tf.Session() as sess:
+        r_paths, r_probabilities, r_states  = sess.run((new_paths, new_path_probabilities, new_states))
+    assert r_paths == approx(output_sequence)
+    assert r_probabilities == approx(output_pobabilities)
+    assert r_states == approx(output_states)
