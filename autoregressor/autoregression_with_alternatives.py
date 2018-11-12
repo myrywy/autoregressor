@@ -1,6 +1,6 @@
 from collections import namedtuple
 import tensorflow as tf
-
+from utils import nested_tuple_apply, parallel_nested_tuples_apply
 
 AutoregressionState = namedtuple("AutoregressionState", ["step", "paths", "path_probabilities", "probability_model_states"])
 
@@ -91,7 +91,7 @@ class AutoregressionBroadcaster:
         self.output_alternative_paths_number = output_alternative_paths_number
         self.zero_state = zero_state
 
-    def call(self, paths, paths_probabilites, state):
+    def call(self, paths, paths_probabilities, state):
         """Choses self.output_alternative_paths_number alternative paths from input, fills with zero if there is not enough paths in input. 
         
         It is assumed that the first dimension is batch index, the second is alternative path index and the third is element-in-path index
@@ -105,7 +105,35 @@ class AutoregressionBroadcaster:
             broadcasted_paths_probabilites: Tensor of dimensions [batch size, self.output_alternative_paths_number] and type the same as paths_probabilites
             broadcasted_states: Tensor of dimensions [batch size, self.output_alternative_paths_number, *state_dimensions] (or (nested) tuple of such tensors) and types the same as original `state`
         """
-        raise NotImplementedError
+        paths_shape = tf.shape(paths)
+        batch_size = paths_shape[0]
+        current_number_of_paths = paths_shape[1]
+        paths_length = paths_shape[2]
+
+        number_of_missing_paths = tf.maximum(self.output_alternative_paths_number - current_number_of_paths, 0)
+
+        preserved_paths = paths[:, 0:self.output_alternative_paths_number, :]
+        missing_paths_size = (batch_size, number_of_missing_paths, paths_length)
+        missing_paths = tf.zeros(missing_paths_size, dtype=paths.dtype)
+        new_paths = tf.concat((preserved_paths, missing_paths), axis=1)
+
+        preserved_probabilities = paths_probabilities[:, 0:self.output_alternative_paths_number]
+        missing_probabilities = tf.zeros(missing_paths_size[0:2], dtype=paths_probabilities.dtype)
+        new_probabilities = tf.concat((preserved_probabilities, missing_probabilities), axis=1)
+        preserved_states = nested_tuple_apply(state, lambda t: t[:, 0:self.output_alternative_paths_number])
+
+        if self.zero_state is not None:
+            missing_states = nested_tuple_apply(self.zero_state, lambda t: self._tile_batch_and_paths(t, batch_size, number_of_missing_paths))
+            new_states = parallel_nested_tuples_apply([preserved_states, missing_states], lambda a, b: tf.concat([a, b], axis=1))
+        else:
+            new_states = preserved_states
+
+        return new_paths, new_probabilities, new_states
+
+    @staticmethod
+    def _tile_batch_and_paths(t, batch_size, paths_number):
+        return tf.tile([[t]], [batch_size, paths_number, 1])
+
 
 
 class AutoregressionWithAlternativePaths(tf.keras.layers.Layer):
@@ -310,10 +338,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         return r
 
     def _recurrent_apply(self, t, fn, *a, **k):
-        if isinstance(t, tuple):
-            return tuple(self._recurrent_apply(e, fn, *a, **k) for e in t)
-        else:
-            return fn(t, *a, **k)
+        return nested_tuple_apply(t, fn, *a, **k)
 
     @staticmethod
     def _top_k_from_2d_tensor(tensor2d, k):

@@ -573,11 +573,15 @@ def test__insert(batch, values, indices, expected):
 )
 def test_AutoregressionBroadcaster(paths, paths_probabilities, states, zero_state, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states):
     broadcaster = AutoregressionBroadcaster(number_of_output_paths, zero_state=zero_state)
-    output_paths, output_paths_probabilities = broadcaster.call(paths, paths_probabilities, states)
+    t_paths = tf.constant(paths)
+    t_paths_probabilities = tf.constant(paths_probabilities)
+    t_states = tf.constant(states)
+    output_paths, output_paths_probabilities, output_states = broadcaster.call(t_paths, t_paths_probabilities, t_states)
     with tf.Session() as sess:
-        result_paths, result_paths_probabilites = sess.run((output_paths, output_paths_probabilities))
+        result_paths, result_paths_probabilites, result_states = sess.run((output_paths, output_paths_probabilities, output_states))
     assert result_paths == approx(expected_paths)
     assert result_paths_probabilites == approx(expected_paths_probabilities)
+    assert expected_states == approx(result_states)
 
 
 @pytest.mark.parametrize("paths, paths_probabilities, states, zero_state, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states",
@@ -778,7 +782,12 @@ def test_AutoregressionBroadcaster(paths, paths_probabilities, states, zero_stat
                                 [101,102,103],
                                 [201,202,203],
                                 [301,302,303],
-                            ]
+                            ],
+                            [ # path level
+                                [111,112,113],
+                                [211,212,213],
+                                [311,312,313],
+                            ],
                         ]
                     ),
                 (
@@ -788,7 +797,12 @@ def test_AutoregressionBroadcaster(paths, paths_probabilities, states, zero_stat
                                     [104,105,106],
                                     [204,205,206],
                                     [304,305,306],
-                                ]
+                                ],
+                                [ # path level
+                                    [114,115,116],
+                                    [214,215,216],
+                                    [314,315,316],
+                                ],
                             ]
                         ),
                     tf.constant(
@@ -797,7 +811,12 @@ def test_AutoregressionBroadcaster(paths, paths_probabilities, states, zero_stat
                                     [107,108,109],
                                     [207,208,209],
                                     [307,308,309],
-                                ]
+                                ],
+                                [ # path level
+                                    [117,118,119],
+                                    [217,218,219],
+                                    [317,318,319],
+                                ],
                             ]
                         )
                 )
@@ -833,35 +852,53 @@ def test_AutoregressionBroadcaster(paths, paths_probabilities, states, zero_stat
                 ],
             ],
             (
-                tf.constant(
+                (
                         [ # batch level
                             [ # path level
                                 [101,102,103],
                                 [201,202,203],
                                 [301,302,303],
                                 [1,2,3],
-                            ]
+                            ],
+                            [ # path level
+                                [111,112,113],
+                                [211,212,213],
+                                [311,312,313],
+                                [1,2,3],
+                            ],
                         ]
                     ),
                 (
-                    tf.constant(
+                    (
                             [ # batch level
                                 [ # path level
                                     [104,105,106],
                                     [204,205,206],
                                     [304,305,306],
                                     [4,5,6],
-                                ]
+                                ],
+                                [ # path level
+                                    [114,115,116],
+                                    [214,215,216],
+                                    [314,315,316],
+                                    [4,5,6],
+                                ],
                             ]
                         ),
-                    tf.constant(
+                    (
                             [ # batch level
                                 [ # path level
                                     [107,108,109],
                                     [207,208,209],
                                     [307,308,309],
                                     [7,8,9],
-                                ]
+                                ],
+                                [ # path level
+                                    [117,118,119],
+                                    [217,218,219],
+                                    [317,318,319],
+                                    [7,8,9],
+                                ],
                             ]
                         )
                 )
@@ -870,12 +907,26 @@ def test_AutoregressionBroadcaster(paths, paths_probabilities, states, zero_stat
     ]
 )
 def test_AutoregressionBroadcaster_with_explicitly_specified_zero_state(paths, paths_probabilities, states, zero_state, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states):
-    broadcaster = AutoregressionBroadcaster(number_of_output_paths)
-    output_paths, output_paths_probabilities = broadcaster.call(paths, paths_probabilities, states, zero_state=zero_state)
+    def maybe_convert_to_constant_tensor(t):
+        if isinstance(t, tf.Tensor):
+            return t
+        return tf.constant(t)
+    broadcaster = AutoregressionBroadcaster(number_of_output_paths, zero_state=zero_state)
+    t_paths = tf.constant(paths)
+    t_paths_probabilities = tf.constant(paths_probabilities)
+    t_states = nested_tuple_apply(states, maybe_convert_to_constant_tensor)
+    output_paths, output_paths_probabilities, output_states = broadcaster.call(t_paths, t_paths_probabilities, t_states)
     with tf.Session() as sess:
-        result_paths, result_paths_probabilites = sess.run((output_paths, output_paths_probabilities))
+        result_paths, result_paths_probabilites, result_states = sess.run((output_paths, output_paths_probabilities, output_states))
     assert result_paths == approx(expected_paths)
     assert result_paths_probabilites == approx(expected_paths_probabilities)
+    state_ok = parallel_nested_tuples_apply([expected_states, result_states], lambda a, b: (a == b).all())
+    if isinstance(state_ok, tuple):
+        assert state_ok[0]
+        assert state_ok[1][0]
+        assert state_ok[1][1]
+    else:
+        assert state_ok
 
 
 @pytest.mark.parametrize("input, number_of_output_paths, expected_paths, expected_paths_probabilities",
