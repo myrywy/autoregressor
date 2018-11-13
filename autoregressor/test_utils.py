@@ -1,5 +1,7 @@
 import pytest
-from utils import parallel_nested_tuples_apply
+from pytest import approx 
+import tensorflow as tf
+from utils import parallel_nested_tuples_apply, batched_top_k_from_2d_tensor
 
 @pytest.mark.parametrize("input, expected_output, fn, a, k", 
     [
@@ -121,3 +123,195 @@ def test_parallel_nested_tuples_apply(input, expected_output, fn, a, k):
 def test_parallel_nested_tuples_apply_raises_value_error(input, expected_output, fn, a, k):
     with pytest.raises(ValueError):
         parallel_nested_tuples_apply(input, fn, *a, **k)
+
+
+@pytest.mark.parametrize("input, k, expected_values, expected_indices_0, expected_indices_1",[
+    (
+        # input
+        [
+            [
+                [0.1, 0.2],
+                [0.3, 0.4]
+            ],
+        ],
+        # k
+        1,
+        # expected values
+        [
+            [0.4],
+        ],
+        [
+            [1],
+        ],
+        [
+            [1]
+        ],
+    ),
+    (
+        # input
+        [
+            [
+                [0.1, 0.2],
+                [0.3, 0.4]
+            ],
+        ],
+        # k
+        2,
+        # expected values
+        [
+            [0.4, 0.3],
+        ],
+        [
+            [1, 1],
+        ],
+        [
+            [1, 0]
+        ],
+    ),
+    (
+        # input
+        [
+            [
+                [0.1, 0.2],
+                [0.3, 0.4],
+            ],
+            [
+                [0.1, 0.2],
+                [0.5, 0.4],
+            ],
+        ],
+        # k
+        3,
+        # expected values
+        [
+            [0.4, 0.3, 0.2],
+            [0.5, 0.4, 0.2],
+        ],
+        [
+            [1, 1, 0],
+            [1, 1, 0],
+        ],
+        [
+            [1, 0, 1],
+            [0, 1, 1],
+        ],
+    ),
+    (
+        # input
+        [
+            [
+                [0.1, 0.2],
+                [0.3, 0.4],
+                [0.1, 0.1]
+            ],
+            [
+                [0.1, 0.2],
+                [0.5, 0.4],
+                [0.1, 0.1],
+            ],
+        ],
+        # k
+        3,
+        # expected values
+        [
+            [0.4, 0.3, 0.2],
+            [0.5, 0.4, 0.2],
+        ],
+        [
+            [1, 1, 0],
+            [1, 1, 0],
+        ],
+        [
+            [1, 0, 1],
+            [0, 1, 1],
+        ],
+    ),
+    (
+        # input
+        [
+            [
+                [0.1, 0.2, 0.1, 0.0],
+                [0.3, 0.4, 0.0, 0.1],
+            ],
+            [
+                [0.1, 0.2, 0.0, 0.1],
+                [0.5, 0.4, 0.1, 0.0],
+            ],
+        ],
+        # k
+        3,
+        # expected values
+        [
+            [0.4, 0.3, 0.2],
+            [0.5, 0.4, 0.2],
+        ],
+        [
+            [1, 1, 0],
+            [1, 1, 0],
+        ],
+        [
+            [1, 0, 1],
+            [0, 1, 1],
+        ],
+    ),
+    (
+        # input
+        [
+            [
+                [0.2, 3.2],
+                [0.4, 0.34],
+                [5.5, 2.4],
+                [0.5, 0.4]
+            ],
+            [
+                [0.2, 3.2],
+                [0.4, 5.5],
+                [5.5, 2.4],
+                [0.5, 0.4]
+            ],
+            [
+                [0.2, 3.2],
+                [5.5, 0.34],
+                [5.5, 2.4],
+                [0.5, 0.4]
+            ],
+            [
+                [0.2, 3.2],
+                [0.4, 0.34],
+                [5.5, 5.5],
+                [0.5, 0.4]
+            ],
+        ],
+        # k
+        2,
+        # expected values
+        [
+            [5.5, 3.2],
+            [5.5, 5.5],
+            [5.5, 5.5],
+            [5.5, 5.5],
+        ],
+        [
+            [2, 0],
+            [1, 2],
+            [1, 2],
+            [2, 2],
+        ],
+        [
+            [0, 1],
+            [1, 0],
+            [0, 0],
+            [0, 1],
+        ],
+    ),
+])
+def test_batched_top_k_from_2d_tensor(input, k, expected_values, expected_indices_0, expected_indices_1):
+    c = tf.constant(input)
+    values, (indices_0, indices_1) = batched_top_k_from_2d_tensor(input, k)
+    
+    with tf.Session() as sess:
+        r_vailues, r_indices_0, r_indices_1 = sess.run((values, indices_0, indices_1))
+
+    assert r_vailues == approx(expected_values)
+    assert r_indices_0 == approx(expected_indices_0)
+    assert r_indices_1 == approx(expected_indices_1)

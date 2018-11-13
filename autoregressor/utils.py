@@ -1,3 +1,5 @@
+import tensorflow as tf
+
 def nested_tuple_apply(t, fn, *a, **k):
     if isinstance(t, tuple):
         return tuple(nested_tuple_apply(e, fn, *a, **k) for e in t)
@@ -35,3 +37,22 @@ def parallel_nested_tuples_apply(ts, fn, *a, **k):
         raise ValueError("Structures of nested tuples form ts don't match.")
     else:
         return fn(*ts, *a, **k)
+
+def top_k_from_2d_tensor(tensor2d, k):
+        """Find top k values of 2D tensor. Return values themselves and vectors their first and second indices.
+        If two elements are equal, the lower-row has priority, if they are in the same row, lower index has priority. """
+        flat_tensor = tf.reshape(tensor2d, (-1,))
+        top_values, top_indices = tf.nn.top_k(flat_tensor, k)
+        top_index1 = top_indices // tf.shape(tensor2d)[1]
+        top_index2 = top_indices % tf.shape(tensor2d)[1]
+        return top_values, (top_index1, top_index2)
+
+def batched_top_k_from_2d_tensor(tensor2d, k):
+        """Find top k values of 2D tensor. Return values themselves and vectors their first and second indices.
+        If two elements are equal, the lower-row has priority, if they are in the same row, lower index has priority. """
+        batch_size = tf.shape(tensor2d)[0]
+        flat_tensor = tf.reshape(tensor2d, (batch_size, -1,))
+        top_values, top_indices = tf.nn.top_k(flat_tensor, k)
+        top_index1 = top_indices // tf.shape(tensor2d)[-1]
+        top_index2 = top_indices % tf.shape(tensor2d)[-1]
+        return top_values, (top_index1, top_index2)
