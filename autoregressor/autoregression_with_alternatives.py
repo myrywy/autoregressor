@@ -1,6 +1,6 @@
 from collections import namedtuple
 import tensorflow as tf
-from utils import nested_tuple_apply, parallel_nested_tuples_apply
+from utils import nested_tuple_apply, parallel_nested_tuples_apply, top_k_from_2d_tensor, batched_top_k_from_2d_tensor, repeat_in_ith_dimension
 
 AutoregressionState = namedtuple("AutoregressionState", ["step", "paths", "path_probabilities", "probability_model_states"])
 
@@ -132,7 +132,9 @@ class AutoregressionBroadcaster:
 
     @staticmethod
     def _tile_batch_and_paths(t, batch_size, paths_number):
-        return tf.tile([[t]], [batch_size, paths_number, 1])
+        batched = repeat_in_ith_dimension(t, 0, batch_size)
+        batched_with_multiple_paths = repeat_in_ith_dimension(batched, 1, paths_number)
+        return batched_with_multiple_paths
 
 
 
@@ -342,13 +344,8 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
 
     @staticmethod
     def _top_k_from_2d_tensor(tensor2d, k):
-        """Find top k values of 2D tensor. Return values themselves and vectors their first and second indices.
-        If two elements are equal, the lower-row has priority, if they are in the same row, lower index has priority. """
-        flat_tensor = tf.reshape(tensor2d, (-1,))
-        top_values, top_indices = tf.nn.top_k(flat_tensor, k)
-        top_index1 = top_indices // tf.shape(tensor2d)[1]
-        top_index2 = top_indices % tf.shape(tensor2d)[1]
-        return top_values, (top_index1, top_index2)
+        # TODO: Factor out completely
+        return top_k_from_2d_tensor(tensor2d, k)
 
     @staticmethod
     def _insert(batch, values, index):
