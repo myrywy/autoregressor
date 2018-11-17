@@ -1,6 +1,9 @@
 import tensorflow as tf
 
 
+PROBABILITY_DTYPE = tf.float32
+
+
 def naive_lookup_op(keys, values, first_dim_is_batch=False):
     """op that for given key vecor returns corresponding vector from values
 
@@ -25,7 +28,7 @@ def naive_lookup_op(keys, values, first_dim_is_batch=False):
 
 def mock_model(hisory_to_probability_mapping, first_dim_is_batch=False):
     keys = [*hisory_to_probability_mapping.keys()]
-    values = tf.constant([hisory_to_probability_mapping[key] for key in keys])
+    values = tf.constant([hisory_to_probability_mapping[key] for key in keys], dtype=PROBABILITY_DTYPE)
     keys = tf.constant(keys)
 
     def mock_model_fn(input, state):
@@ -37,6 +40,9 @@ def mock_model(hisory_to_probability_mapping, first_dim_is_batch=False):
             history_now = tf.concat((history[:,0:history_length], tf.expand_dims(input,1), history[:,history_length + 1:]), axis=1, name="concat_past_future")
         else:
             history_now = tf.concat((history[0:history_length], [input], history[history_length + 1:]), axis=0, name="concat_past_future")
+
+        # This is to inform Tensorflow that shape of history doesn't change which follows from operations above but is not possible for TF to infer.
+        history_now.set_shape(history.shape)
 
         new_state = (history_length + 1, history_now)
         output = naive_lookup_op(keys, values, first_dim_is_batch=first_dim_is_batch)(history_now)
@@ -78,4 +84,11 @@ class MockModelLayer(tf.nn.rnn_cell.RNNCell):
             return (tf.constant(0), tf.zeros(shape=(batch_size, self.history_size, *self._history_entry_dims), dtype=dtype))
 
     def call(self, input, state):
-        return self.layer_function(input, state)
+        if self.step_redundant:
+            history_length, history = state
+            collapsed_history_length = history_length[0]
+            output, (collapsed_history_length, history_new) = self.layer_function(input, (collapsed_history_length, history))
+            history_length = tf.ones(tf.shape(history_length), dtype=history_length.dtype) * collapsed_history_length
+            return output, (history_length, history_new)
+        else:
+            return self.layer_function(input, state)
