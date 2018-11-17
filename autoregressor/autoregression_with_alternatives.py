@@ -25,12 +25,19 @@ class AutoregressionInitializer:
         number_of_ouput_paths (int): how many alternative paths (per batch element) will be created.
         index_in_probability_distribution_to_element_id_mapping: layer or tensorflow op that takes index in probability distribution produced by conditional_probability_model and returns id of corresponding element of the vocabulary.
     """
-    def __init__(self, conditional_probability_model, number_of_ouput_paths, index_in_probability_distribution_to_element_id_mapping):
-        self.conditional_probability_model = conditional_probability_model
-        self.number_of_ouput_paths = number_of_ouput_paths, 
-        self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
+    DEFAULT_PROBABILITY_DTYPE = tf.float32
 
-    def call(self, input, conditional_probability_model_initial_state=None):
+    def __init__(self, conditional_probability_model, number_of_ouput_paths, index_in_probability_distribution_to_element_id_mapping, id_to_embedding_mapping, state_dtype=tf.float32):
+        self.conditional_probability_model = conditional_probability_model
+        self.number_of_ouput_paths = number_of_ouput_paths
+        self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
+        self.id_to_embedding_mapping = id_to_embedding_mapping
+
+        extended_mapping = lambda t: self.id_to_embedding_mapping(t[:,0])
+        self.model_feeder = ConditionalProbabilityModelFeeder(conditional_probability_model, extended_mapping)
+        self.state_dtype = state_dtype
+
+    def call(self, input, conditional_probability_model_initial_state=None, sequence_length=None):
         """
         Args:
             input: tensor of dimemsions [batch, initial_sequence_length] and integer type (tf.int32).
@@ -42,7 +49,31 @@ class AutoregressionInitializer:
             states: tensor of dimensions [batch, number_of_ouput_paths] + <dimensions of conditional_probability_model_state>.
                 It contains final state of conditional_probability model (i.e. after consuming whole input) replicated number_of_ouput_paths times (independently for each sequence in batch).
         """
-        raise NotImplementedError
+        batch_size = tf.shape(input)[0]
+        if conditional_probability_model_initial_state is None:
+            conditional_probability_model_initial_state = self.conditional_probability_model.zero_state(batch_size, dtype=self.state_dtype)
+        
+        pseudo_embedded_input = tf.expand_dims(input,2)
+
+        output, final_state = tf.nn.dynamic_rnn(
+            self.model_feeder,
+            pseudo_embedded_input,
+            initial_state=conditional_probability_model_initial_state,
+            sequence_length=sequence_length,
+            dtype=self.DEFAULT_PROBABILITY_DTYPE#nested_tuple_apply(conditional_probability_model_initial_state, lambda t: t.dtype)
+        )
+        probability_distributions = output[:, tf.shape(output)[1]-1]
+        probabilities, element_indices = tf.nn.top_k(probability_distributions, self.number_of_ouput_paths)
+        element_ids = tf.map_fn(self.index_in_probability_distribution_to_element_id_mapping, element_indices)
+
+        repeated_initial_paths = tf.tile(tf.expand_dims(input, 1), [1, self.number_of_ouput_paths, 1])
+        paths = tf.concat([repeated_initial_paths, tf.expand_dims(element_ids, 2)], axis=2)
+
+        repeated_states = nested_tuple_apply(final_state, repeat_in_ith_dimension, 1, self.number_of_ouput_paths) 
+
+        return paths, probabilities, output , final_state
+    
+
 
 class AutoregressionExtender:
     """
@@ -392,12 +423,13 @@ class NextElementGenerator:
         return aggregated_continuation_probabilities, new_probability_model_states
 
 
-class ConditionalProbabilityModelFeeder:
+class ConditionalProbabilityModelFeeder(tf.nn.rnn_cell.RNNCell):
     def __init__(
         self,
         conditional_probability_model,
         id_to_embedding_mapping
         ):
+        super(ConditionalProbabilityModelFeeder, self).__init__()
         self.conditional_probability_model = conditional_probability_model
         self.id_to_embedding_mapping = id_to_embedding_mapping
     
@@ -406,3 +438,14 @@ class ConditionalProbabilityModelFeeder:
         return self.conditional_probability_model(
             previuos_step_embeddings, 
             model_state)
+
+    @property
+    def output_size(self):
+        return self.conditional_probability_model.output_size
+
+    @property
+    def state_size(self):
+        return self.conditional_probability_model.state_size
+
+    def zero_state(self, *a, **k):
+        return self.conditional_probability_model.zero_state(*a, **k)
