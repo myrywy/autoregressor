@@ -1,7 +1,7 @@
 import pytest
 from pytest import approx 
 import tensorflow as tf
-from utils import parallel_nested_tuples_apply, batched_top_k_from_2d_tensor
+from utils import parallel_nested_tuples_apply, batched_top_k_from_2d_tensor, repeat_in_ith_dimension
 
 @pytest.mark.parametrize("input, expected_output, fn, a, k", 
     [
@@ -306,7 +306,6 @@ def test_parallel_nested_tuples_apply_raises_value_error(input, expected_output,
     ),
 ])
 def test_batched_top_k_from_2d_tensor(input, k, expected_values, expected_indices_0, expected_indices_1):
-    c = tf.constant(input)
     values, (indices_0, indices_1) = batched_top_k_from_2d_tensor(input, k)
     
     with tf.Session() as sess:
@@ -315,3 +314,39 @@ def test_batched_top_k_from_2d_tensor(input, k, expected_values, expected_indice
     assert r_vailues == approx(expected_values)
     assert r_indices_0 == approx(expected_indices_0)
     assert r_indices_1 == approx(expected_indices_1)
+
+@pytest.fixture
+def tensor3d():
+    return tf.constant(
+        [
+            [
+                [1,2,3],
+                [4,5,6],
+            ],
+            [
+                [7,8,9],
+                [10,11,12],
+            ],
+            [
+                [13,14,15],
+                [16,17,18],
+            ],
+        ]
+    )
+
+@pytest.mark.parametrize("i, k",
+    [
+        (0, 0), (1, 0), (2, 0), (3, 0),
+        (0, 1), (1, 1), (2, 1), (3, 1),
+        (0, 2), (1, 2), (2, 2), (3, 2),
+        (0, 3), (1, 3), (2, 3), (3, 3),
+    ]
+)
+def test_repeat_in_ith_dimension(tensor3d, i, k):
+    t_ouptut = repeat_in_ith_dimension(tensor3d, i, k)
+    with tf.Session() as sess:
+        r_output, r_input = sess.run((t_ouptut, tensor3d))
+    for j in range(k):
+        input_equal_slice = [slice(None) for _ in tensor3d.shape]
+        input_equal_slice.insert(i, j)
+        assert r_output[input_equal_slice] == approx(r_input)

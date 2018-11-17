@@ -56,3 +56,23 @@ def batched_top_k_from_2d_tensor(tensor2d, k):
         top_index1 = top_indices // tf.shape(tensor2d)[-1]
         top_index2 = top_indices % tf.shape(tensor2d)[-1]
         return top_values, (top_index1, top_index2)
+
+
+def repeat_in_ith_dimension(tensor, i, k):
+    """Adds new dimension (namely i-th dimension) and repeats original tensor k times along this dimesion.
+    
+    output[a_0, ..., a_(i-1), a_i, a_(i+1), ..., a_(n-i)] = input[a_0, ..., a_(i-1), a_(i+1), ..., a_(n-1)] 
+    
+    Args:
+        tensor (tf.Tensor): input tensor
+        i: index of new dimension
+        k: size in i-th dimension (i.e. how many times the original vector will be repeated)
+    
+    Returns:
+        tf.Tensor of the same dtype and size [s_0, ..., s_(i-1), k, s_(i+1), ..., s_(n-1)]
+    """
+    expanded = tf.expand_dims(tensor, i)
+    multiplicity = [1 for _ in expanded.shape]
+    multiplicity[i] = k
+    return tf.tile(expanded, multiplicity)
+
