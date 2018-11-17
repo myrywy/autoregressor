@@ -1094,16 +1094,15 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
     conditional_probability_model = MockModelLayer(probabilities, first_dim_is_batch=True, step_redundant=True, history_entry_dims=(1,))
     paths_initializer = AutoregressionInitializer(conditional_probability_model, number_of_output_paths, lambda i: i+1, lambda id: tf.expand_dims(id, 1), state_dtype=tf.int32)
     t_input = tf.constant(input)
-    paths, paths_probabilities, output, final_states = paths_initializer.call(t_input)
+    paths, paths_probabilities, states = paths_initializer.call(t_input)
     with tf.Session() as sess:
-        result_paths, result_paths_probabilities, output, final_states = sess.run((paths, paths_probabilities, output, final_states))
+        result_paths, result_paths_probabilities, states = sess.run((paths, paths_probabilities, states))
     assert result_paths == approx(expected_paths)
     assert result_paths_probabilities == approx(expected_paths_probabilities)
     
 
 
-@pytest.mark.skip
-@pytest.mark.parametrize("input, number_of_output_paths, expected_paths, expected_paths_probabilities",
+@pytest.mark.parametrize("input, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states",
     [
         (
             [ # batch level
@@ -1118,9 +1117,9 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
                     [1, 3],
                 ],
                 [ # paths level
-                    [1, 3], # path
-                    [1, 1],
-                    [1, 2],
+                    [2, 3], # path
+                    [2, 1],
+                    [2, 2],
                 ],
             ],
             [ # batch level
@@ -1135,6 +1134,32 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
                     0.0
                 ]
             ],
+            (
+                [
+                    [
+                        1,
+                        1,
+                        1,
+                    ],
+                    [
+                        1,
+                        1,
+                        1,
+                    ]
+                ],
+                [ # batch level
+                    [
+                        [1, 0, 0],
+                        [1, 0, 0],
+                        [1, 0, 0],
+                    ],
+                    [
+                        [2, 0, 0],
+                        [2, 0, 0],
+                        [2, 0, 0],
+                    ],
+                ]
+            )
         ),
         (
             [ # batch level
@@ -1155,6 +1180,22 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
                     0.0
                 ],
             ],
+            (
+                [
+                    [
+                        1,
+                        1,
+                        1,
+                    ]
+                ],
+                [ # batch level
+                    [
+                        [1, 0, 0],
+                        [1, 0, 0],
+                        [1, 0, 0],
+                    ]
+                ]
+            )
         ),
         (
             [ # batch level
@@ -1163,9 +1204,9 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
             3,
             [ # batch level
                 [ # paths level
-                    [1, 3], # path
-                    [1, 1],
-                    [1, 2],
+                    [2, 3], # path
+                    [2, 1],
+                    [2, 2],
                 ],
             ],
             [ # batch level
@@ -1175,6 +1216,22 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
                     0.0
                 ]
             ],
+            (
+                [
+                    [
+                        1,
+                        1,
+                        1,
+                    ]
+                ],
+                [ # batch level
+                    [
+                        [2, 0, 0],
+                        [2, 0, 0],
+                        [2, 0, 0],
+                    ]
+                ]
+            )
         ),
         (
             [ # batch level
@@ -1187,7 +1244,7 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
                     [1, 1], # path
                 ],
                 [ # paths level
-                    [1, 3], # path
+                    [2, 3], # path
                 ],
             ],
             [ # batch level
@@ -1198,6 +1255,24 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
                     1.0, # path probability
                 ]
             ],
+            (
+                [
+                    [
+                        1,
+                    ],
+                    [
+                        1,
+                    ],
+                ],
+                [ # batch level
+                    [
+                        [1, 0, 0],
+                    ],
+                    [
+                        [2, 0, 0],
+                    ]
+                ]
+            )
         ),
         (
             [ # batch level
@@ -1229,40 +1304,63 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
                     0.0
                 ]
             ],
+            (
+                [
+                    [
+                        2,
+                        2,
+                        2,
+                    ],
+                    [
+                        2,
+                        2,
+                        2,
+                    ]
+                ],
+                [ # batch level
+                    [
+                        [1, 1, 0],
+                        [1, 1, 0],
+                        [1, 1, 0],
+                    ],
+                    [
+                        [1, 2, 0],
+                        [1, 2, 0],
+                        [1, 2, 0],
+                    ]
+                ]
+            )
         ),
     ]
 )
-def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input, number_of_output_paths, expected_paths, expected_paths_probabilities):
+def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states):
+    """Expected states are lacking one (last) dimension - 1 insted of [1] so they are expanded in the test"""
+    expected_state_history = np.expand_dims(np.array(expected_states[1]), 3)
+    expected_states = (np.array(expected_states[0]), expected_state_history)
     history_entry_dims = (1,)
-    conditional_probability_model = MockModelLayer(probabilities, first_dim_is_batch=True, history_entry_dims=history_entry_dims)
-    paths_initializer = AutoregressionInitializer(conditional_probability_model, number_of_output_paths, lambda i: i+1)
-    batch_size = 2
+    conditional_probability_model = MockModelLayer(probabilities, first_dim_is_batch=True, step_redundant=True, history_entry_dims=(1,))
+    paths_initializer = AutoregressionInitializer(conditional_probability_model, number_of_output_paths, lambda i: i+1, lambda id: tf.expand_dims(id, 1))
+    t_input = tf.constant(input)
+    batch_size = len(input)
     history_size = 3 
     zero_state = (
-        tf.constant(0), 
+        tf.zeros(
+            shape=(batch_size,), 
+            dtype=tf.int32
+            ), 
         tf.zeros(
             shape=(batch_size, history_size, *history_entry_dims), 
             dtype=tf.int32
             )
         )
-    paths, paths_probabilities, _ = paths_initializer.call(input, conditional_probability_model_initial_state=zero_state)
+    paths, paths_probabilities, states = paths_initializer.call(t_input, conditional_probability_model_initial_state=zero_state)
     with tf.Session() as sess:
-        result_paths, result_paths_probabilities = sess.run((paths, paths_probabilities))
+        result_paths, result_paths_probabilities, result_states = sess.run((paths, paths_probabilities, states))
     assert result_paths == approx(expected_paths)
     assert result_paths_probabilities == approx(expected_paths_probabilities)
+    assert result_states[0] == approx(expected_states[0])
+    assert result_states[1] == approx(expected_states[1])
 
-
-    probabilities = {
-        (-1,0,0,0):[0.5, 0.5, 0.0], # początek historii
-
-        (-1,1,0,0):[0.6, 0.4, 0.0], # a
-        (-1,2,0,0):[0.0, 0.0, 1.0], # b
-        
-        (-1,1,1,0):[0.6, 0.4, 0.0], # aa
-        (-1,1,2,0):[0.95, 0.05, 0.0], # ab
-        (-1,2,1,0):[0.0, 0.0, 1.0], # ba
-        (-1,2,2,0):[0.0, 0.0, 1.0], # bb
-        }
 
 @pytest.mark.skip
 @pytest.mark.parametrize("input_sequence, input_probabilities, input_states, output_sequence, output_pobabilities, output_states, steps", 

@@ -71,7 +71,7 @@ class AutoregressionInitializer:
 
         repeated_states = nested_tuple_apply(final_state, repeat_in_ith_dimension, 1, self.number_of_ouput_paths) 
 
-        return paths, probabilities, output , final_state
+        return paths, probabilities, repeated_states
     
 
 
