@@ -1362,7 +1362,7 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
     assert result_states[1] == approx(expected_states[1])
 
 
-@pytest.mark.skip
+
 @pytest.mark.parametrize("input_sequence, input_probabilities, input_states, output_sequence, output_pobabilities, output_states, steps", 
     [
         ( # case 1 - one-element batch, one patch
@@ -1384,12 +1384,16 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # input states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    0, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    [
+                        0, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    ]
                 ],
                 [
-                    [ # history tensor for the first patch
-                        [0],[0],[0],[0],
-                    ],
+                    [
+                        [ # history tensor for the first patch
+                            [0],[0],[0],[0],
+                        ],
+                    ]
                 ],
             ),
             # OUTPUT
@@ -1409,13 +1413,17 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             ],
             # output states (using MockProbabilityModel with redundant step argument)
             (
-                [ # step tensor
-                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                [
+                    [ # step tensor
+                        1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                    ]
                 ],
                 [
-                    [ # history tensor for the first patch
-                        [-1],[0],[0],[0],
-                    ],
+                    [
+                        [ # history tensor for the first patch
+                            [-1],[0],[0],[0],
+                        ],
+                    ]
                 ],
             ),
             # STEPS
@@ -1444,14 +1452,20 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # input states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    1,
+                    [
+                        1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        1,
+                    ]
                 ],
                 [
-                    [ # history tensor for the first patch
-                        [-1],[0],[0],[0],
-                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
-                    ],
+                    [ # first batch element
+                        [ # history tensor for the first patch
+                            [-1],[0],[0],[0],
+                        ],
+                        [
+                            [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                        ],
+                    ]
                 ],
             ),
             # OUTPUT
@@ -1469,20 +1483,26 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # output probabilities
             [
                 [ # 1. batch element
-                    0.6, # 1-st (and olny) path probability
-                    0.4
+                    0.5 * 0.6, # 1-st (and olny) path probability
+                    0.5 * 0.4
                 ],
             ],
             # output states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    2,
+                    [
+                        2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        2,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[0],[0], # history tensor for the first patch
-                        [-1],[1],[0],[0],
+                    [ # first batch element
+                        [
+                            [-1],[1],[0],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[0],[0],
+                        ]
                     ],
                 ],
             ),
@@ -1516,20 +1536,24 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # input states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    1,
-                    1,
+                    [ # for the first sequence in batch
+                        1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        1,
+                        1,
+                    ]
                 ],
                 [
-                    [ # history tensor for the first patch
-                        [-1],[0],[0],[0],
-                    ],
-                    [
-                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
-                    ],
-                    [
-                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
-                    ],
+                    [     
+                        [ # history tensor for the first patch
+                            [-1],[0],[0],[0],
+                        ],
+                        [
+                            [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                        ],
+                        [
+                            [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                        ],
+                    ]
                 ],
             ),
             # OUTPUT
@@ -1550,28 +1574,32 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # output probabilities
             [
                 [ # 1. batch element
-                    0.6, # 1-st (and olny) path probability
-                    0.4,
-                    0.0,
+                    0.5 * 0.6, # 1-st (and olny) path probability
+                    0.5 * 0.4,
+                    0.5 * 0.0,
                 ],
             ],
             # output states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    2,
-                    2,
+                    [
+                        2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        2,
+                        2,
+                    ]
                 ],
                 [
-                    [ # history tensor for the first patch
-                        [-1],[1],[0],[0],
-                    ],
                     [
-                        [-1],[1],[0],[0],
-                    ],
-                    [
-                        [-1],[1],[0],[0],
-                    ],
+                        [ # history tensor for the first patch
+                            [-1],[1],[0],[0],
+                        ],
+                        [
+                            [-1],[1],[0],[0],
+                        ],
+                        [
+                            [-1],[1],[0],[0],
+                        ],
+                    ]
                 ],
             ),
             # STEPS
@@ -1600,16 +1628,20 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # input states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    2,
+                    [
+                        2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        2,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[0],[0], # history tensor for the first patch
-                    ],
                     [
-                        [-1],[1],[0],[0],
-                    ],
+                        [ 
+                            [-1],[1],[0],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[0],[0],
+                        ],
+                    ]
                 ],
             ),
             # OUTPUT
@@ -1634,16 +1666,20 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # output states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    3,
+                    [
+                        3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        3,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[2],[0], # history tensor for the first patch
-                    ],
                     [
-                        [-1],[1],[1],[0],
-                    ],
+                        [ 
+                            [-1],[1],[2],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[1],[0],
+                        ],
+                    ]
                 ],
             ),
             # STEPS
@@ -1676,20 +1712,24 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # input states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    2,
-                    2,
+                    [
+                        2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        2,
+                        2,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[0],[0], # history tensor for the first patch
-                    ],
                     [
-                        [-1],[1],[0],[0],
-                    ],
-                    [
-                        [-1],[0],[0],[0],
-                    ],
+                        [ 
+                            [-1],[1],[0],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[0],[0],
+                        ],
+                        [
+                            [-1],[0],[0],[0],
+                        ],
+                    ]
                 ],
             ),
             # OUTPUT
@@ -1712,26 +1752,30 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
                 [ # 1. batch element
                     0.38, # 1-st path probability
                     0.36,
-                    0.16,
+                    0.24,
                 ],
             ],
             # output states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    3,
-                    3,
+                    [
+                        3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        3,
+                        3,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[2],[0], # history tensor for the first patch
-                    ],
                     [
-                        [-1],[1],[1],[0],
-                    ],
-                    [
-                        [-1],[1],[1],[0],
-                    ],
+                        [ 
+                            [-1],[1],[2],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[1],[0],
+                        ],
+                        [
+                            [-1],[1],[1],[0],
+                        ],
+                    ]
                 ],
             ),
             # STEPS
@@ -1768,24 +1812,28 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # input states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    2,
-                    2,
-                    2,
+                    [
+                        2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        2,
+                        2,
+                        2,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[0],[0], # history tensor for the first patch
-                    ],
                     [
-                        [-1],[1],[0],[0],
-                    ],
-                    [
-                        [-1],[0],[0],[0],
-                    ],
-                    [
-                        [-1],[0],[0],[0],
-                    ],
+                        [ 
+                            [-1],[1],[0],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[0],[0],
+                        ],
+                        [
+                            [-1],[0],[0],[0],
+                        ],
+                        [
+                            [-1],[0],[0],[0],
+                        ],
+                    ]
                 ],
             ),
             # OUTPUT
@@ -1811,31 +1859,35 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
                 [ # 1. batch element
                     0.38, # 1-st path probability
                     0.36,
-                    0.16,
+                    0.24,
                     0.02,
                 ],
             ],
             # output states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    3,
-                    3,
-                    3,
+                    [
+                        3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        3,
+                        3,
+                        3,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[2],[0], # history tensor for the first patch
-                    ],
                     [
-                        [-1],[1],[1],[0],
-                    ],
-                    [
-                        [-1],[1],[1],[0],
-                    ],
-                    [
-                        [-1],[1],[2],[0],
-                    ],
+                        [ 
+                            [-1],[1],[2],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[1],[0],
+                        ],
+                        [
+                            [-1],[1],[1],[0],
+                        ],
+                        [
+                            [-1],[1],[2],[0],
+                        ],
+                    ]
                 ],
             ),
             # STEPS
@@ -1864,16 +1916,20 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # input states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    1,
+                    [
+                        1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        1,
+                    ]
                 ],
                 [
-                    [ # history tensor for the first patch
-                        [-1],[0],[0],[0],
-                    ],
                     [
-                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
-                    ],
+                        [ # history tensor for the first patch
+                            [-1],[0],[0],[0],
+                        ],
+                        [
+                            [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                        ],
+                    ]
                 ],
             ),
             # OUTPUT
@@ -1891,23 +1947,27 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # output probabilities
             [
                 [ # 1. batch element
-                    0.38, # 1-st path probability
-                    0.36
+                    0.19, # 1-st path probability
+                    0.18
                 ],
             ],
             # output states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    3,
+                    [
+                        3, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        3,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[2],[0], # history tensor for the first patch
-                    ],
                     [
-                        [-1],[1],[1],[0],
-                    ],
+                        [ 
+                            [-1],[1],[2],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[1],[0],
+                        ],
+                    ]
                 ],
             ),
             # NUMBER OF STEPS TO MAKE (how much elents to produce)
@@ -1927,10 +1987,10 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
                 ],
                 [ # 2-nd batch element
                     [ # 1-st path
-                        -1, 1, 1, 
+                        1, 1, # this is kind of inconsistent with the input state of mock cond. prob. model state, initiaj "-1" was removed to match dims
                     ],
                     [
-                        -1, 1, 2,
+                        1, 2,
                     ],
                 ],
             ],
@@ -1941,30 +2001,38 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
                     0.0,
                 ],
                 [ # 2. batch element
-                    0.38, # 1-st path probability
-                    0.36
+                    0.6, # 1-st path probability
+                    0.4
                 ],
             ],
             # input states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    1,
-                    2,
-                    2,
+                    [
+                        1, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        1,
+                    ],
+                    [
+                        2,
+                        2,
+                    ]
                 ],
                 [
-                    [ # history tensor for the first patch
-                        [-1],[0],[0],[0],
+                    [
+                        [ # history tensor for the first patch
+                            [-1],[0],[0],[0],
+                        ],
+                        [
+                            [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
+                        ],
                     ],
                     [
-                        [-1],[0],[0],[0], # this element of mock probability model state doesn't really match the input patch because the patch is zero-filled and there is no such history i probability model
-                    ],
-                    [ 
-                        [-1],[1],[0],[0], # history tensor for the first patch
-                    ],
-                    [
-                        [-1],[1],[0],[0],
+                        [ 
+                            [-1],[1],[0],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[0],[0],
+                        ]
                     ]
                 ],
             ),
@@ -1981,18 +2049,18 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
                 ],
                 [ # 2-nd batch element
                     [ # 1-st path
-                        -1, 1, 2, 1, # a path extended with one element
+                        1, 2, 1, # a path extended with one element
                     ],
                     [
-                        -1, 1, 1, 1,
+                        1, 1, 1,
                     ],
                 ],
             ],
             # output probabilities
             [
                 [ # 1. batch element
-                    0.6, # 1-st (and olny) path probability
-                    0.4
+                    0.5 * 0.6, # 1-st (and olny) path probability
+                    0.5 * 0.4
                 ],
                 [ # 2. batch element
                     0.38, # 1-st path probability
@@ -2002,24 +2070,32 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
             # output states (using MockProbabilityModel with redundant step argument)
             (
                 [ # step tensor
-                    2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
-                    2,
-                    3,
-                    3,
+                    [
+                        2, # step for the first batch element of MockProbablityModel = 1-st patch of 1-st batch element for Extender
+                        2,
+                    ],
+                    [
+                        3,
+                        3,
+                    ]
                 ],
                 [
-                    [ 
-                        [-1],[1],[0],[0], # history tensor for the first patch
+                    [
+                        [ 
+                            [-1],[1],[0],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[0],[0],
+                        ],
                     ],
                     [
-                        [-1],[1],[0],[0],
-                    ],
-                    [ 
-                        [-1],[1],[2],[0], # history tensor for the first patch
-                    ],
-                    [
-                        [-1],[1],[1],[0],
-                    ],
+                        [ 
+                            [-1],[1],[2],[0], # history tensor for the first patch
+                        ],
+                        [
+                            [-1],[1],[1],[0],
+                        ],
+                    ]
                 ],
             ),
             # STEPS
@@ -2028,9 +2104,12 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
     ]
 )
 def test_AutoregressionExtender(probabilities_with_start_element_no_third, input_sequence, input_probabilities, input_states, output_sequence, output_pobabilities, output_states, steps):
-    model = MockModelLayer(probabilities_with_start_element_no_third, history_entry_dims=(1,))
+    model = MockModelLayer(probabilities_with_start_element_no_third, first_dim_is_batch=True, step_redundant=True, history_entry_dims=(1,))
+    #nested_tuple_apply(input_states, repeat_in_ith_dimension, 1, len(input_sequence[0]))
+    #steps_to_make = len(input_sequence[0][0])
+    numbers_of_alternatives = len(input_sequence[0])
     regresor_step = AutoregressionWithAlternativePathsStep(
-        2, 
+        numbers_of_alternatives, 
         model, 
         steps, 
         probability_model_initial_input=-1,
@@ -2040,10 +2119,11 @@ def test_AutoregressionExtender(probabilities_with_start_element_no_third, input
 
     paths, paths_probabilities = tf.constant(input_sequence), tf.constant(input_probabilities)
     states = tuple(tf.constant(t) for t in input_states)
-    new_paths, new_path_probabilities, new_states = extender(paths, probabilites, states)
+    new_paths, new_path_probabilities, new_states = extender.call(paths, paths_probabilities, states)
 
     with tf.Session() as sess:
         r_paths, r_probabilities, r_states  = sess.run((new_paths, new_path_probabilities, new_states))
     assert r_paths == approx(output_sequence)
     assert r_probabilities == approx(output_pobabilities)
-    assert r_states == approx(output_states)
+    assert r_states[0] == approx(output_states[0])
+    assert r_states[1] == approx(output_states[1])

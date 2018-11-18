@@ -60,7 +60,7 @@ class AutoregressionInitializer:
             pseudo_embedded_input,
             initial_state=conditional_probability_model_initial_state,
             sequence_length=sequence_length,
-            dtype=self.DEFAULT_PROBABILITY_DTYPE#nested_tuple_apply(conditional_probability_model_initial_state, lambda t: t.dtype)
+            dtype=self.DEFAULT_PROBABILITY_DTYPE
         )
         probability_distributions = output[:, tf.shape(output)[1]-1]
         probabilities, element_indices = tf.nn.top_k(probability_distributions, self.number_of_ouput_paths)
@@ -99,7 +99,30 @@ class AutoregressionExtender:
             state: tensor of dimensions [batch, number_of_ouput_paths, *dimensions_of_conditional_probability_model_state].
                 It will be used as "initial" state of conditional_probability_model for autoregression
         """
-        raise NotImplementedError
+        batch_size = tf.shape(paths)[0]
+        number_of_alternatives = tf.shape(paths)[1]
+        current_time_size = tf.shape(paths)[2]
+
+        current_step = tf.ones((batch_size, number_of_alternatives), tf.int32) * current_time_size
+
+        paths_complement = tf.zeros((batch_size, number_of_alternatives, self.number_of_elements_to_generate), dtype=paths.dtype)
+        extended_paths = tf.concat([paths, paths_complement], axis=2)
+
+        initial_autoregressor_state = AutoregressionState(current_step, extended_paths, probabilites, state)
+        mock_input = tf.ones((batch_size, self.number_of_elements_to_generate, 1))
+        
+        sequence_length = tf.ones((batch_size,), dtype=tf.int32) * self.number_of_elements_to_generate
+
+        _, final_state = tf.nn.dynamic_rnn(
+            self.autoregression_step,
+            mock_input,
+            initial_state=initial_autoregressor_state,
+            sequence_length=sequence_length, 
+            dtype=tf.float32
+        )
+        final_state = AutoregressionState(*final_state)
+        return final_state.paths, final_state.path_probabilities, final_state.probability_model_states
+
 
 class AutoregressionBroadcaster:
     """
