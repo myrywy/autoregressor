@@ -2158,3 +2158,57 @@ def test_AutoregressionExtender(probabilities_with_start_element_no_third, input
     assert r_probabilities == approx(output_pobabilities)
     assert r_states[0] == approx(output_states[0])
     assert r_states[1] == approx(output_states[1])
+
+
+@pytest.mark.parametrize("input, expected_paths, expected_paths_probabilities, steps", 
+    [
+        (
+            [ -1, -1],
+            # OUTPUT
+            # output sequence
+            [
+                [ # 1-st batch element
+                    [ # 1-st path
+                        -1, 1, 2, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 1, 1,
+                    ],
+                ],
+                [ # 2-nd batch element
+                    [ # 1-st path
+                        -1, 1, 2, 1, # a path extended with one element
+                    ],
+                    [
+                        -1, 1, 1, 1,
+                    ],
+                ],
+            ],
+            # output probabilities
+            [
+                [ # 1. batch element
+                    0.19, # 1-st path probability
+                    0.18
+                ],
+                [ # 2. batch element
+                    0.19, # 1-st path probability
+                    0.18
+                ],
+            ],
+            # Number of steps to take
+            3
+        ),
+    ]
+)
+def test_AutoregressionWithAlternativePaths_no_mask(probabilities_with_start_element_no_third, input, expected_paths, expected_paths_probabilities, steps):
+    conditional_probability_model = MockModelLayer(probabilities_with_start_element_no_third, first_dim_is_batch=True, step_redundant=True, history_entry_dims=(1,))
+    autoregressor = AutoregressionWithAlternativePaths(
+        conditional_probability_model,
+        len(expected_paths[0]),
+        steps,
+        index_in_probability_distribution_to_id_mapping=lambda x: x+1,
+        id_to_embedding_mapping=lambda id: tf.expand_dims(id, 1))
+    t_input = tf.constant(input)
+    paths, paths_probabilities = autoregressor(t_input)
+    assert paths == approx(expected_paths)
+    assert paths_probabilities == approx(expected_paths_probabilities)

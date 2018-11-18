@@ -191,22 +191,35 @@ class AutoregressionBroadcaster:
         return batched_with_multiple_paths
 
 
-
 class AutoregressionWithAlternativePaths(tf.keras.layers.Layer):
     def __init__(self,
-            autoregression_step_builder,
+            conditional_probability_model,
             number_of_alternatives,
-            output_sequence_length):
-        """
-        Args:
-            autoregression_step_builder (Function[(int, int),tf.nn.rnn_cell.RNNCell]): callable -> 
-        """
-        self.output_sequence_length = output_sequence_length
+            number_of_elements_to_generate,
+            index_in_probability_distribution_to_id_mapping,
+            id_to_embedding_mapping,
+            conditional_probability_model_initial_state=None,
+            probability_masking_layer=None):
+        super(AutoregressionWithAlternativePaths, self).__init__()
+        self.number_of_elements_to_generate = number_of_elements_to_generate
         self.number_of_alternatives = number_of_alternatives
         self.conditional_probability_model = conditional_probability_model
+        self.index_in_probability_distribution_to_id_mapping = index_in_probability_distribution_to_id_mapping
+        self.id_to_embedding_mapping = id_to_embedding_mapping
+        self.conditional_probability_model_initial_state = conditional_probability_model_initial_state
+        self.probability_masking_layer = probability_masking_layer
 
-    def compute_output_shape(self, input_shape):
-        return (self.number_of_alternatives, self.output_sequence_length)
+    def call(self, input):
+        """Generates `number_of_alternatives` most probable sequences starting with input and meeting constraints expressed by `probability_masking_layer`.
+
+        Args:
+            input: tensor of size (batch_size) initial inputs (ids of type tf.int32) to conditional probability models.
+
+        Returns:
+            Tensor of size `[batch_size, number_of_alternatives, number_of_elements_to_generate]`
+            Tensor of size `[batch_size, number_of_alternatives]` with predicted probabilites of corresponding sequences
+        """
+        return NotImplemented
 
 
 class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
