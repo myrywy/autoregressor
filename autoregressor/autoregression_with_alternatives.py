@@ -27,7 +27,13 @@ class AutoregressionInitializer:
     """
     DEFAULT_PROBABILITY_DTYPE = tf.float32
 
-    def __init__(self, conditional_probability_model, number_of_ouput_paths, index_in_probability_distribution_to_element_id_mapping, id_to_embedding_mapping, state_dtype=tf.float32):
+    def __init__(
+            self, 
+            conditional_probability_model, 
+            number_of_ouput_paths, 
+            index_in_probability_distribution_to_element_id_mapping, 
+            id_to_embedding_mapping, 
+            state_dtype=tf.float32):
         self.conditional_probability_model = conditional_probability_model
         self.number_of_ouput_paths = number_of_ouput_paths
         self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
@@ -73,7 +79,6 @@ class AutoregressionInitializer:
 
         return paths, probabilities, repeated_states
     
-
 
 class AutoregressionExtender:
     """
@@ -191,7 +196,7 @@ class AutoregressionBroadcaster:
         return batched_with_multiple_paths
 
 
-class AutoregressionWithAlternativePaths(tf.keras.layers.Layer):
+class AutoregressionWithAlternativePaths:
     def __init__(self,
             conditional_probability_model,
             number_of_alternatives,
@@ -200,7 +205,6 @@ class AutoregressionWithAlternativePaths(tf.keras.layers.Layer):
             id_to_embedding_mapping,
             conditional_probability_model_initial_state=None,
             probability_masking_layer=None):
-        super(AutoregressionWithAlternativePaths, self).__init__()
         self.number_of_elements_to_generate = number_of_elements_to_generate
         self.number_of_alternatives = number_of_alternatives
         self.conditional_probability_model = conditional_probability_model
@@ -208,6 +212,24 @@ class AutoregressionWithAlternativePaths(tf.keras.layers.Layer):
         self.id_to_embedding_mapping = id_to_embedding_mapping
         self.conditional_probability_model_initial_state = conditional_probability_model_initial_state
         self.probability_masking_layer = probability_masking_layer
+
+        self.regresor_step = AutoregressionWithAlternativePathsStep(
+            self.number_of_alternatives, 
+            conditional_probability_model, 
+            self.number_of_elements_to_generate, 
+            probability_model_initial_input=-1,
+            index_in_probability_distribution_to_element_id_mapping=self.index_in_probability_distribution_to_id_mapping
+            )
+        self.initializer = AutoregressionInitializer(
+            self.conditional_probability_model,
+            self.number_of_alternatives,
+            self.index_in_probability_distribution_to_id_mapping, 
+            self.id_to_embedding_mapping
+            )
+        self.extender = AutoregressionExtender(
+            self.regresor_step, 
+            self.number_of_elements_to_generate - 1
+        )
 
     def call(self, input):
         """Generates `number_of_alternatives` most probable sequences starting with input and meeting constraints expressed by `probability_masking_layer`.
@@ -219,7 +241,11 @@ class AutoregressionWithAlternativePaths(tf.keras.layers.Layer):
             Tensor of size `[batch_size, number_of_alternatives, number_of_elements_to_generate]`
             Tensor of size `[batch_size, number_of_alternatives]` with predicted probabilites of corresponding sequences
         """
-        return NotImplemented
+        input = tf.expand_dims(input, 1) # add time dimension
+        initial_paths, initial_paths_probabilities, initial_states = self.initializer.call(input, conditional_probability_model_initial_state=self.conditional_probability_model_initial_state)
+        paths, paths_probabilities, _ = self.extender.call(initial_paths, initial_paths_probabilities, initial_states)
+        return paths, paths_probabilities
+
 
 
 class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
