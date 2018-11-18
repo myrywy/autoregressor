@@ -338,27 +338,58 @@ def test__insert(batch, values, indices, expected):
 
     assert result == approx(expected)
 
-@pytest.mark.skip
+@pytest.mark.parametrize("input, state, expected_output, expected_state",
+[
+    (
+        tf.constant([ # batch
+            [ # time
+                [ 1,], [ 2,], [ 3,]
+            ],
+            [ # time
+                [ 4,], [ 5,], [ 6,]
+            ]
+        ]),
+        tf.constant([
+            [1],
+            [2],
+        ]),
+        np.array([ # batch
+            [ # time
+                [ 1, 1, 1], [ 2, 2, 2], [ 3, 3, 3]
+            ],
+            [ # time
+                [ 4, 4, 4], [ 5, 5, 5], [ 6, 6, 6]
+            ]
+        ]),
+        np.array([
+            [4],
+            [5],
+        ])
+    )
+])
 def test_ConditionalProbabilityModelFeeder(input, state, expected_output, expected_state):
-    class Rnn(tf.nn.rnn_cell.RNNCell):
+    """This test is intended to assert only that ConditionalProbabilityModelFeeder has features needed to use it with tf.nn.dynamic_rnn function."""
+    class MockRnn(tf.nn.rnn_cell.RNNCell):
         def __init__(self):
-            super(Rnn, self).__init__()
+            super(MockRnn, self).__init__()
 
-        def call(input, state):
-            return tf.ones([tf.shape(input[0]), self.output_size]), state + 1
+        def call(self, input, state):
+            return input, state + 1
 
         @property
         def output_size(self):
-            return (3,)
+            return 3
 
         @property
         def state_size(self):
-            return (2,)
+            return 2
 
         def zero_state(self, batch_size, dtype):
             return tf.zeros((batch_size,) + self.state_size, dtype=dtype)
 
-    feeder = ConditionalProbabilityModelFeeder()
+    model = MockRnn()
+    id_to_embeddings = lambda t: tf.concat([t, t, t], axis=1)
+    feeder = ConditionalProbabilityModelFeeder(model, id_to_embeddings)
     t_output, t_state = tf.nn.dynamic_rnn(
         feeder,
         input,
