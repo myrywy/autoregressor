@@ -1,0 +1,15 @@
+../.cache/*
+../.pytest_cache/*
+../__pycache__/*
+.cache/*
+.coverage
+.pytest_cache/*
+__pycache__/*
+docs/.pytest_cache/*
+docs/doc_output/*
+test_checkpoints/*
+test_lstm_model/.pytest_cache/*
+test_lstm_model/__pycache__/*
+test_lstm_model/test_checkpoints/*
+../test_regression_with_alternatives.py
+
