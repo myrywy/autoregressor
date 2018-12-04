@@ -7,6 +7,10 @@ def rnn_cell_extension(layer):
         def __init__(self, *a, **k):
             super(PseudoRnnCell, self).__init__()
             self.wrapped_layer = layer(*a, **k)
+            try:
+                self.input_spec = self.wrapped_layer.input_spec
+            except AttributeError:
+                pass
 
         def call(self, input, state):
             """ output <- wrapped_layer(input); new_state <- state"""
