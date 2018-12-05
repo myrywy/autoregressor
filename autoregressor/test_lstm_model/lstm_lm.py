@@ -3,36 +3,45 @@ import tensorflow as tf
 from layers_utils import AffineProjectionPseudoCell
 
 NUM_UNITS = 30
-NUM_LAYERS = 10
+NUM_LAYERS = 3
 VOCAB_SIZE = 2196027 # glove vocab size +10 (which is reserved for special id)
 
 
-class PredictNext(tf.keras.layers.Layer):
+class PredictNext(tf.nn.rnn_cell.RNNCell):
     def __init__(self, n_units, n_layers, probability_distribution_size, dtype=tf.float32, **kwargs):
         super(PredictNext, self).__init__(dtype=dtype, **kwargs)
         self.probability_distribution_size = probability_distribution_size
         self.n_units = n_units
         self.n_layers = n_layers
+
+        # alternatively this could be done via projection_num atgument of last LSTM cell
+        projection = AffineProjectionPseudoCell(self.n_units, self.probability_distribution_size, self.dtype)
+
+        self.rnn_cell = tf.nn.rnn_cell.MultiRNNCell(
+            [self._create_single_cell() for _ in range(self.n_layers)] + [projection],
+            state_is_tuple=True)
+        
     
-    def call(self, input, sequence_length=None):
+    def call(self, input, state):
         """
         Args:
             input: Tensor of shape [batch_size, max_sequence_length, embeddings_size]
         """
-        # alternatively this could be done via projection_num atgument of last LSTM cell
-        projection = AffineProjectionPseudoCell(self.n_units, self.probability_distribution_size, self.dtype)
-
-        rnn_cell = tf.nn.rnn_cell.MultiRNNCell(
-            [self._create_single_cell() for _ in range(self.n_layers)] + [projection],
-            state_is_tuple=True)
-        
-        # TODO: Custom initial state?
-        logits, state = tf.nn.dynamic_rnn(rnn_cell, input, sequence_length=sequence_length, dtype=self.dtype)
-
-        return logits
+        return self.rnn_cell(input, state)
 
     def _create_single_cell(self):
         return tf.nn.rnn_cell.LSTMCell(self.n_units, state_is_tuple=True)
+
+    @property
+    def state_size(self):
+        return self.rnn_cell.state_size
+
+    @property
+    def output_size(self):
+        return self.rnn_cell.output_size
+
+    def zero_state(self, *a, **k):
+        return self.rnn_cell.zero_state(*a, **k)
         
 
 def language_model_input_dataset(raw_dataset, id_to_embedding_mapping):
@@ -69,7 +78,8 @@ def get_language_model_fn(vocab_size):
             targets = labels["targets"]
 
         predictor = PredictNext(NUM_UNITS, NUM_LAYERS, vocab_size)
-        logits = predictor(sentence, sequence_length=length)
+        logits, state = tf.nn.dynamic_rnn(predictor, sentence, sequence_length=length, dtype=tf.float32)
+
         probabilities = tf.nn.softmax(logits=logits)
 
         if mode == tf.estimator.ModeKeys.PREDICT:
@@ -85,8 +95,11 @@ def get_language_model_fn(vocab_size):
             train_op = optimizer.minimize(
                 loss=loss, global_step=tf.train.get_global_step())
 
+            predicted_word = tf.argmax(probabilities, 2)
+
             metrics = {
-                    "cross_entropy": cross_entropy,
+                    #"cross_entropy": cross_entropy,
+                    "accuracy": tf.metrics.accuracy(targets, predicted_word)
                 }
 
             # Wrap all of this in an EstimatorSpec.
@@ -94,7 +107,7 @@ def get_language_model_fn(vocab_size):
                 mode=mode,
                 loss=loss,
                 train_op=train_op,
-                #eval_metric_ops=metrics
+                eval_metric_ops=metrics
                 )
             
         return spec

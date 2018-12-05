@@ -7,6 +7,7 @@ id  |   vector
 6   |   [1,-2,3]
 7   |   [-1,2,-3]
 """
+import shutil
 import tensorflow as tf
 import numpy as np
 import itertools
@@ -15,7 +16,8 @@ from pytest import approx
 
 from lstm_lm import get_language_model_fn, language_model_input_dataset
 
-SEED = 0
+SEED = 0 # this is used with numpy random seed in each test
+tf.set_random_seed(1) # this must be set before graph is made, otherwise it random sequence has already some random values and fixing seed dosn't ensure reproducability
 
 @pytest.fixture
 def embedding_lookup_fn():
@@ -102,7 +104,10 @@ def test_language_model_input_dataset(embedding_lookup_fn):
             assert r_labels["targets"] == approx(expected_label["targets"])
 
 def test_get_language_model_fn(input_data, embedding_lookup_fn):
-    estimator = tf.estimator.Estimator(get_language_model_fn(8), params={"learning_rate": 0.004}, model_dir="./lstm_test_models")
+    try:
+        shutil.rmtree("./lstm_test_models")
+    except FileNotFoundError:
+        pass
     def fix_dimensions(features, labels, batch_size):
         features["inputs"] = tf.to_float(features["inputs"])
         features["inputs"].set_shape((batch_size, None, 3))
@@ -112,8 +117,6 @@ def test_get_language_model_fn(input_data, embedding_lookup_fn):
     def get_input():
         dataset = input_data()
         return dataset.map(lambda f, l: fix_dimensions(f, l, 20))
-    estimator.train(lambda: get_input(), steps=300)
-
 
     def remove_labels(features, labels):
         return features
@@ -136,11 +139,18 @@ def test_get_language_model_fn(input_data, embedding_lookup_fn):
             outputs.append(sequence_output) 
         return outputs
 
-    with tf.Session() as sess:
+    #estimator = tf.estimator.Estimator(get_language_model_fn(8), params={"learning_rate": 0.04}, model_dir="./lstm_test_models")
+    #estimator.train(lambda: get_input(), steps=200)
+    estimator = tf.estimator.Estimator(get_language_model_fn(8), params={"learning_rate": 0.0005}, model_dir="./lstm_test_models")
+    for _ in range(10):
+        estimator.train(lambda: get_input(), steps=100)
+        eval_result = estimator.evaluate(get_input, steps=3)
+
+    '''with tf.Session() as sess:
         d = predict_input()
         it = d.make_one_shot_iterator()
         n = it.get_next()
-        r_n = sess.run(n)
+        r_n = sess.run(n)'''
 
     predictions = estimator.predict(predict_input)
     predictions = [*itertools.islice(predictions, 3)]
