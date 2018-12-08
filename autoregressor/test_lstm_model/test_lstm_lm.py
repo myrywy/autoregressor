@@ -14,7 +14,7 @@ import itertools
 import pytest
 from pytest import approx
 
-from lstm_lm import get_language_model_fn, language_model_input_dataset
+from lstm_lm import get_language_model_fn, get_autoregressor_model_fn, language_model_input_dataset
 
 SEED = 0 # this is used with numpy random seed in each test
 tf.set_random_seed(1) # this must be set before graph is made, otherwise it random sequence has already some random values and fixing seed dosn't ensure reproducability
@@ -103,54 +103,45 @@ def test_language_model_input_dataset(embedding_lookup_fn):
             assert r_features["length"] == approx(expected_feature["length"])
             assert r_labels["targets"] == approx(expected_label["targets"])
 
+# Auxiliary functions TODO: maybe move some of them to  utils, they can be useful outsite test cases
+def fix_dimensions(features, labels, batch_size):
+    features["inputs"] = tf.to_float(features["inputs"])
+    features["inputs"].set_shape((batch_size, None, 3))
+    features["length"].set_shape((batch_size,))
+    labels["targets"].set_shape((batch_size, None))
+    return features, labels
+    
+
+def remove_labels(features, labels):
+    return features
+
+def predict_input():
+    dataset = input_data_fn(input_data_minimal(), embedding_lookup_fn, 3)
+    dataset = dataset.map(lambda f, l: fix_dimensions(f, l, 3))
+    return dataset.map(remove_labels)
+
+def softmax_to_winner(sequences):
+    outputs = []
+    for sequence in sequences:
+        sequence_output = np.argmax(sequence, axis=1)
+        outputs.append(sequence_output) 
+    return outputs
+
 def test_get_language_model_fn(input_data, embedding_lookup_fn):
     try:
         shutil.rmtree("./lstm_test_models")
     except FileNotFoundError:
         pass
-    def fix_dimensions(features, labels, batch_size):
-        features["inputs"] = tf.to_float(features["inputs"])
-        features["inputs"].set_shape((batch_size, None, 3))
-        features["length"].set_shape((batch_size,))
-        labels["targets"].set_shape((batch_size, None))
-        return features, labels
+
     def get_input():
         dataset = input_data()
         return dataset.map(lambda f, l: fix_dimensions(f, l, 20))
 
-    def remove_labels(features, labels):
-        return features
-    def predict_input():
-        #dataset = language_model_input_dataset(input_data_minimal(), embedding_lookup_fn).\
-        #    padded_batch(3, 
-        #    padded_shapes= (
-        #            {"inputs": tf.TensorShape((tf.Dimension(None), tf.Dimension(None))), "length": tf.TensorShape((tf.Dimension(1),))},
-        #            {"targets": tf.TensorShape((tf.Dimension(None),))}
-        #        )
-        #    )
-        dataset = input_data_fn(input_data_minimal(), embedding_lookup_fn, 3)
-        dataset = dataset.map(lambda f, l: fix_dimensions(f, l, 3))
-        return dataset.map(remove_labels)
 
-    def softmax_to_winner(sequences):
-        outputs = []
-        for sequence in sequences:
-            sequence_output = np.argmax(sequence, axis=1)
-            outputs.append(sequence_output) 
-        return outputs
-
-    #estimator = tf.estimator.Estimator(get_language_model_fn(8), params={"learning_rate": 0.04}, model_dir="./lstm_test_models")
-    #estimator.train(lambda: get_input(), steps=200)
     estimator = tf.estimator.Estimator(get_language_model_fn(8), params={"learning_rate": 0.0005}, model_dir="./lstm_test_models")
     for _ in range(10):
         estimator.train(lambda: get_input(), steps=100)
         eval_result = estimator.evaluate(get_input, steps=3)
-
-    '''with tf.Session() as sess:
-        d = predict_input()
-        it = d.make_one_shot_iterator()
-        n = it.get_next()
-        r_n = sess.run(n)'''
 
     predictions = estimator.predict(predict_input)
     predictions = [*itertools.islice(predictions, 3)]
@@ -264,3 +255,55 @@ def test_input_data(embedding_lookup_fn):
     assert batch_2[0]["inputs"] == approx(expected_2_inputs)
     assert batch_1[0]["length"] == approx(expected_1_length)
     assert batch_2[0]["length"] == approx(expected_2_length)
+
+
+def test_get_autoregressor_model_fn(input_data, embedding_lookup_fn):
+    try:
+        shutil.rmtree("./lstm_test_models")
+    except FileNotFoundError:
+        pass
+    def get_input():
+        dataset = input_data()
+        return dataset.map(lambda f, l: fix_dimensions(f, l, 20))
+
+    
+    #def make_test_example():
+    #    return {"inputs": tf.constant([1]), "length":tf.constant([4])}
+    def make_test_example():
+        yield {"inputs": np.array([1]), "length": np.array([4])}
+    def test_input():
+        batch_size = 1
+        def fix_dimensions(features):
+            features["inputs"].set_shape((batch_size,))
+            features["length"].set_shape((batch_size,))
+            return features
+        dataset = tf.data.Dataset.from_generator(make_test_example, {"inputs": tf.int32, "length": tf.int32})
+        return dataset.map(fix_dimensions)
+
+    #test_input = tf.data.Dataset.from_tensor_slices(make_test_example())
+
+    params = {"learning_rate": 0.0005, "number_of_alternatives": 3}
+
+    model_fn = get_autoregressor_model_fn(8, id_to_embedding_mapping=lambda x: tf.to_float(embedding_lookup_fn(x)))
+
+    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir="./lstm_test_models")
+    for _ in range(3):
+        estimator.train(lambda: get_input(), steps=100)
+        eval_result = estimator.evaluate(get_input, steps=3)
+        print("Eval results")
+        print(eval_result)
+
+
+    predictions = estimator.predict(test_input)
+    predictions = [*itertools.islice(predictions, 3)]
+    
+    print(predictions)
+
+    assert predictions == approx(
+            [
+                [1,6,7,2,0],
+                [1,6,5,2,0],
+                [1,6,7,5,2]
+            ]
+        )
+

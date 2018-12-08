@@ -281,9 +281,19 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
 
     @property
     def state_size(self):
+        totalnie_odjechany_experyment = tf.zeros((tf.identity(self.number_of_alternatives), tf.identity(self.max_output_sequence_length)))
+        totalnie_odjechany_experyment = tf.shape(totalnie_odjechany_experyment)
         return AutoregressionState(
-                tf.TensorShape(1), 
-                tf.TensorShape((self.number_of_alternatives, self.max_output_sequence_length)),
+                tf.TensorShape(1),
+                totalnie_odjechany_experyment, 
+                #tf.TensorShape(
+                #        
+                #            (
+                #                tf.identity(self.number_of_alternatives), 
+                #                tf.identity(self.max_output_sequence_length),
+                #            )
+                #        
+                #    ),
                 tf.TensorShape((self.number_of_alternatives,)),
                 self.conditional_probability_model.state_size
                 )

@@ -1,6 +1,7 @@
 import tensorflow as tf
 
 from layers_utils import AffineProjectionPseudoCell
+from autoregression_with_alternatives import AutoregressionWithAlternativePaths
 
 NUM_UNITS = 30
 NUM_LAYERS = 3
@@ -112,3 +113,66 @@ def get_language_model_fn(vocab_size):
             
         return spec
     return language_model_fn
+
+
+
+def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping):
+    def autoregressor_model_fn(features, labels, mode, params):
+        # Args:
+        #
+        # features: This is the x-arg from the input_fn.
+        # labels:   Its not used at all.
+        # mode:     Either TRAIN, EVAL, or PREDICT
+        # params:   User-defined hyper-parameters, currently `learning_rate` only.
+
+        predictor = PredictNext(NUM_UNITS, NUM_LAYERS, vocab_size)
+
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            initial_inputs = features["inputs"] # expect tensor of a shape [batch_size] with first elemetns
+            length = features["length"] # expect tensor of a shape [batch_size] with number of elements to generate
+            length = tf.squeeze(length)
+            assert len(length.shape) == 0
+            autoregressor = AutoregressionWithAlternativePaths(
+                conditional_probability_model=predictor,
+                number_of_alternatives=params["number_of_alternatives"],
+                number_of_elements_to_generate=length,
+                index_in_probability_distribution_to_id_mapping=tf.identity,
+                id_to_embedding_mapping=id_to_embedding_mapping,
+                conditional_probability_model_initial_state=None,
+                probability_masking_layer=None)
+            paths, paths_probabilities = autoregressor.call(initial_inputs)
+            spec = tf.estimator.EstimatorSpec(
+                mode=mode, 
+                predictions={"paths": paths, "paths_probabilities": paths_probabilities})
+        else:
+            sentence, length = features["inputs"], features["length"]
+            targets = labels["targets"]
+            logits, state = tf.nn.dynamic_rnn(predictor, sentence, sequence_length=length, dtype=tf.float32)
+            probabilities = tf.nn.softmax(logits=logits)
+            cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
+                                                                        logits=logits)
+
+            loss = tf.reduce_mean(cross_entropy)
+            optimizer = tf.train.AdamOptimizer(learning_rate=params["learning_rate"])
+
+            # Get the TensorFlow op for doing a single optimization step.
+            train_op = optimizer.minimize(
+                loss=loss, global_step=tf.train.get_global_step())
+
+            predicted_word = tf.argmax(probabilities, 2)
+
+            metrics = {
+                    #"cross_entropy": cross_entropy,
+                    "accuracy": tf.metrics.accuracy(targets, predicted_word)
+                }
+
+            # Wrap all of this in an EstimatorSpec.
+            spec = tf.estimator.EstimatorSpec(
+                mode=mode,
+                loss=loss,
+                train_op=train_op,
+                eval_metric_ops=metrics
+                )
+            
+        return spec
+    return autoregressor_model_fn
