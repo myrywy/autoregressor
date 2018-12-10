@@ -218,6 +218,7 @@ class AutoregressionWithAlternativePaths:
             conditional_probability_model, 
             self.number_of_elements_to_generate, 
             probability_model_initial_input=-1,
+            id_to_embedding_mapping=self.id_to_embedding_mapping,
             index_in_probability_distribution_to_element_id_mapping=self.index_in_probability_distribution_to_id_mapping
             )
         self.initializer = AutoregressionInitializer(
