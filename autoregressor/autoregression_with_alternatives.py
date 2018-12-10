@@ -496,13 +496,13 @@ class NextElementGenerator:
         return aggregated_continuation_probabilities, new_probability_model_states
 
 
-class ConditionalProbabilityModelFeeder(tf.nn.rnn_cell.RNNCell):
+class ConditionalProbabilityModelFeeder:
     def __init__(
         self,
         conditional_probability_model,
         id_to_embedding_mapping
         ):
-        super(ConditionalProbabilityModelFeeder, self).__init__()
+        #super(ConditionalProbabilityModelFeeder, self).__init__()
         self.conditional_probability_model = conditional_probability_model
         self.id_to_embedding_mapping = id_to_embedding_mapping
     
@@ -511,6 +511,9 @@ class ConditionalProbabilityModelFeeder(tf.nn.rnn_cell.RNNCell):
         return self.conditional_probability_model(
             previuos_step_embeddings, 
             model_state)
+
+    def __call__(self, *a, **k):
+        return self.call(*a, **k)
 
     @property
     def output_size(self):
