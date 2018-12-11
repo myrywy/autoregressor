@@ -260,7 +260,61 @@ def test_input_data(embedding_lookup_fn):
     assert batch_2[0]["length"] == approx(expected_2_length)
 
 
-def test_get_autoregressor_model_fn(input_data, embedding_lookup_fn):
+def get_test_input_fn(make_example_fn, batch_size, inputs_length):
+    def test_input():
+        def fix_dimensions(features):
+            features["inputs"].set_shape((batch_size,inputs_length))
+            features["length"].set_shape((batch_size,))
+            return features
+        dataset = tf.data.Dataset.from_generator(make_example_fn, {"inputs": tf.int32, "length": tf.int32})
+        dataset = dataset.batch(batch_size)
+        return dataset.map(fix_dimensions)
+    return test_input
+
+def make_test_example():
+    yield {"inputs": np.array([1,5]), "length": np.array(4)}
+    yield {"inputs": np.array([1,7]), "length": np.array(4)}
+    yield {"inputs": np.array([1,6]), "length": np.array(4)}
+
+@pytest.mark.parametrize(
+    "make_example_fn, "
+    "batch_size, "
+    "inputs_length, "
+    "prediction_steps, "
+    "expected_paths, "
+    "predictions_mask",
+    [
+        (make_test_example, 1, 2, 3,
+            [
+                [
+                    [1,5,6,7,2,0],
+                ], [
+                    [1,7,6,5,2,0],
+                ], [
+                    [1,6,6,7,5,2]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,1,0],
+                ], [
+                    [1,1,1,1,1,0],
+                ], [
+                    [1,1,1,1,1,1]
+                ]
+            ]
+            )
+    ]
+)
+def test_get_autoregressor_model_fn(
+    input_data, 
+    embedding_lookup_fn,
+    make_example_fn, 
+    batch_size, 
+    inputs_length,
+    prediction_steps,
+    expected_paths,
+    predictions_mask):
     try:
         shutil.rmtree("./lstm_test_models")
     except FileNotFoundError:
@@ -269,26 +323,6 @@ def test_get_autoregressor_model_fn(input_data, embedding_lookup_fn):
         dataset = input_data()
         dataset = dataset.map(force_float_embeddings)
         return dataset.map(lambda f, l: fix_dimensions(f, l, 20))
-
-    
-    #def make_test_example():
-    #    return {"inputs": tf.constant([1]), "length":tf.constant([4])}
-    def make_test_example():
-        yield {"inputs": np.array([1,5]), "length": np.array(4)}
-        yield {"inputs": np.array([1,7]), "length": np.array(4)}
-        yield {"inputs": np.array([1,6]), "length": np.array(4)}
-    def test_input():
-        batch_size = 1
-        inputs_length = 2
-        def fix_dimensions(features):
-            features["inputs"].set_shape((batch_size,inputs_length))
-            features["length"].set_shape((batch_size,))
-            return features
-        dataset = tf.data.Dataset.from_generator(make_test_example, {"inputs": tf.int32, "length": tf.int32})
-        dataset = dataset.batch(batch_size)
-        return dataset.map(fix_dimensions)
-
-    #test_input = tf.data.Dataset.from_tensor_slices(make_test_example())
 
     params = {"learning_rate": 0.0005, "number_of_alternatives": 1}
 
@@ -302,21 +336,11 @@ def test_get_autoregressor_model_fn(input_data, embedding_lookup_fn):
         print(eval_result)
 
 
-    predictions = estimator.predict(test_input)
-    predictions = [*itertools.islice(predictions, 3)]
+    predictions = estimator.predict(get_test_input_fn(make_example_fn, batch_size, inputs_length))
+    predictions = [*itertools.islice(predictions, prediction_steps)]
     predictions_stacked = np.stack([o["paths"] for o in predictions])
     
-    predictions_stacked[:2,0,-1] = 0 # because this elements are after the real last element so we don't care (there was no such cases in examples in dataset )
+    predictions_stacked *= predictions_mask # because this elements are after the real last element so we don't care (there was no such cases in examples in dataset )
     
-    assert predictions_stacked == approx(
-            [
-                [
-                    [1,5,6,7,2,0],
-                ], [
-                    [1,7,6,5,2,0],
-                ], [
-                    [1,6,6,7,5,2]
-                ]
-            ]
-        )
+    assert predictions_stacked == approx(expected_paths)
 
