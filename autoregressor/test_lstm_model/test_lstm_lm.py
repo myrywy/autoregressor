@@ -111,11 +111,14 @@ def fix_dimensions(features, labels, batch_size):
     labels["targets"].set_shape((batch_size, None))
     return features, labels
     
+def force_float_embeddings(features, labels):
+    features["inputs"] = tf.to_float(features["inputs"])
+    return features, labels
 
 def remove_labels(features, labels):
     return features
 
-def predict_input():
+def predict_input(embedding_lookup_fn):
     dataset = input_data_fn(input_data_minimal(), embedding_lookup_fn, 3)
     dataset = dataset.map(lambda f, l: fix_dimensions(f, l, 3))
     return dataset.map(remove_labels)
@@ -143,7 +146,7 @@ def test_get_language_model_fn(input_data, embedding_lookup_fn):
         estimator.train(lambda: get_input(), steps=100)
         eval_result = estimator.evaluate(get_input, steps=3)
 
-    predictions = estimator.predict(predict_input)
+    predictions = estimator.predict(lambda: predict_input(embedding_lookup_fn))
     predictions = [*itertools.islice(predictions, 3)]
     winners = softmax_to_winner(predictions)
     expected = [
@@ -264,25 +267,30 @@ def test_get_autoregressor_model_fn(input_data, embedding_lookup_fn):
         pass
     def get_input():
         dataset = input_data()
+        dataset = dataset.map(force_float_embeddings)
         return dataset.map(lambda f, l: fix_dimensions(f, l, 20))
 
     
     #def make_test_example():
     #    return {"inputs": tf.constant([1]), "length":tf.constant([4])}
     def make_test_example():
-        yield {"inputs": np.array([1]), "length": np.array([4])}
+        yield {"inputs": np.array([1,5]), "length": np.array(4)}
+        yield {"inputs": np.array([1,7]), "length": np.array(4)}
+        yield {"inputs": np.array([1,6]), "length": np.array(4)}
     def test_input():
         batch_size = 1
+        inputs_length = 2
         def fix_dimensions(features):
-            features["inputs"].set_shape((batch_size,))
+            features["inputs"].set_shape((batch_size,inputs_length))
             features["length"].set_shape((batch_size,))
             return features
         dataset = tf.data.Dataset.from_generator(make_test_example, {"inputs": tf.int32, "length": tf.int32})
+        dataset = dataset.batch(batch_size)
         return dataset.map(fix_dimensions)
 
     #test_input = tf.data.Dataset.from_tensor_slices(make_test_example())
 
-    params = {"learning_rate": 0.0005, "number_of_alternatives": 3}
+    params = {"learning_rate": 0.0005, "number_of_alternatives": 1}
 
     model_fn = get_autoregressor_model_fn(8, id_to_embedding_mapping=lambda x: tf.to_float(embedding_lookup_fn(x)))
 
@@ -296,14 +304,19 @@ def test_get_autoregressor_model_fn(input_data, embedding_lookup_fn):
 
     predictions = estimator.predict(test_input)
     predictions = [*itertools.islice(predictions, 3)]
+    predictions_stacked = np.stack([o["paths"] for o in predictions])
     
-    print(predictions)
-
-    assert predictions == approx(
+    predictions_stacked[:2,0,-1] = 0 # because this elements are after the real last element so we don't care (there was no such cases in examples in dataset )
+    
+    assert predictions_stacked == approx(
             [
-                [1,6,7,2,0],
-                [1,6,5,2,0],
-                [1,6,7,5,2]
+                [
+                    [1,5,6,7,2,0],
+                ], [
+                    [1,7,6,5,2,0],
+                ], [
+                    [1,6,6,7,5,2]
+                ]
             ]
         )
 

@@ -1,5 +1,6 @@
 import tensorflow as tf
 
+import utils
 from layers_utils import AffineProjectionPseudoCell
 from autoregression_with_alternatives import AutoregressionWithAlternativePaths
 
@@ -28,7 +29,9 @@ class PredictNext(tf.nn.rnn_cell.RNNCell):
         Args:
             input: Tensor of shape [batch_size, max_sequence_length, embeddings_size]
         """
-        return self.rnn_cell(input, state)
+        output, new_state = self.rnn_cell(input, state)
+        assert utils.nested_tuple_apply(state, lambda x: x.dtype) == utils.nested_tuple_apply(new_state, lambda x: x.dtype)
+        return output, new_state
 
     def _create_single_cell(self):
         return tf.nn.rnn_cell.LSTMCell(self.n_units, state_is_tuple=True)
@@ -131,7 +134,9 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping):
             initial_inputs = features["inputs"] # expect tensor of a shape [batch_size] with first elemetns
             length = features["length"] # expect tensor of a shape [batch_size] with number of elements to generate
             length = tf.squeeze(length)
-            assert len(length.shape) == 0
+            if len(length.shape) != 0:
+                print("warning, multiple output sequence length for one batch not supported")
+                length = length[0]
             autoregressor = AutoregressionWithAlternativePaths(
                 conditional_probability_model=predictor,
                 number_of_alternatives=params["number_of_alternatives"],
@@ -140,7 +145,7 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping):
                 id_to_embedding_mapping=id_to_embedding_mapping,
                 conditional_probability_model_initial_state=None,
                 probability_masking_layer=None)
-            paths, paths_probabilities = autoregressor.call(initial_inputs)
+            paths, paths_probabilities = autoregressor.call_with_initial_sequence(initial_inputs)
             spec = tf.estimator.EstimatorSpec(
                 mode=mode, 
                 predictions={"paths": paths, "paths_probabilities": paths_probabilities})
