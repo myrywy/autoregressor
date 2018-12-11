@@ -243,9 +243,22 @@ class AutoregressionWithAlternativePaths:
             Tensor of size `[batch_size, number_of_alternatives]` with predicted probabilites of corresponding sequences
         """
         input = tf.expand_dims(input, 1) # add time dimension
+        return self.call_with_initial_sequence(input)
+
+    def call_with_initial_sequence(self, input):
+        """Generates `number_of_alternatives` most probable sequences starting with input sequence and meeting constraints expressed by `probability_masking_layer`.
+
+        Args:
+            input: tensor of size (batch_size, initial sequence length) - initial inputs (ids of type tf.int32) to conditional probability models.
+
+        Returns:
+            Tensor of size `[batch_size, number_of_alternatives, number_of_elements_to_generate]`
+            Tensor of size `[batch_size, number_of_alternatives]` with predicted probabilites of corresponding sequences
+        """
         initial_paths, initial_paths_probabilities, initial_states = self.initializer.call(input, conditional_probability_model_initial_state=self.conditional_probability_model_initial_state)
         paths, paths_probabilities, _ = self.extender.call(initial_paths, initial_paths_probabilities, initial_states)
         return paths, paths_probabilities
+
 
 
 
