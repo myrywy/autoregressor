@@ -204,7 +204,8 @@ class AutoregressionWithAlternativePaths:
             index_in_probability_distribution_to_id_mapping,
             id_to_embedding_mapping,
             conditional_probability_model_initial_state=None,
-            probability_masking_layer=None):
+            probability_masking_layer=None,
+            probability_aggregation_op=None):
         self.number_of_elements_to_generate = number_of_elements_to_generate
         self.number_of_alternatives = number_of_alternatives
         self.conditional_probability_model = conditional_probability_model
@@ -219,7 +220,9 @@ class AutoregressionWithAlternativePaths:
             self.number_of_elements_to_generate, 
             probability_model_initial_input=-1,
             id_to_embedding_mapping=self.id_to_embedding_mapping,
-            index_in_probability_distribution_to_element_id_mapping=self.index_in_probability_distribution_to_id_mapping
+            index_in_probability_distribution_to_element_id_mapping=self.index_in_probability_distribution_to_id_mapping,
+            probability_masking_layer=probability_masking_layer,
+            probability_aggregation_op=probability_aggregation_op
             )
         self.initializer = AutoregressionInitializer(
             self.conditional_probability_model,
@@ -277,6 +280,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             index_in_probability_distribution_to_element_id_mapping=tf.identity,
             id_to_embedding_mapping=lambda x: tf.expand_dims(x,1),
             probability_masking_layer=None,
+            probability_aggregation_op=None
             ):
         """
         Args:
@@ -291,7 +295,7 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
         self.id_to_embedding_mapping = id_to_embedding_mapping
         self.probability_masking_layer = probability_masking_layer
         self.conditional_probability_model_feeder = ConditionalProbabilityModelFeeder(conditional_probability_model, id_to_embedding_mapping)
-        self.next_element_generator = NextElementGenerator(self.conditional_probability_model_feeder)
+        self.next_element_generator = NextElementGenerator(self.conditional_probability_model_feeder, probability_aggregation_op)
 
     @property
     def state_size(self):
@@ -494,8 +498,10 @@ class NextElementGenerator:
     def __init__(
         self,
         conditional_probability_model_feeder,
-        probability_aggregation_op=tf.multiply, # to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
+        probability_aggregation_op=None, # to zależy od reprezentacji prawdopodobieństwa, przy bardziej praktycznej logitowej reprezentacji to powinien być raczej plus
     ):
+        if probability_aggregation_op is None:
+            probability_aggregation_op = tf.multiply
         self.conditional_probability_model_feeder = conditional_probability_model_feeder
         self.probability_aggregation_op = probability_aggregation_op
 
