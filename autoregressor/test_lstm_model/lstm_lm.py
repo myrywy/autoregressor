@@ -144,7 +144,8 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping):
                 index_in_probability_distribution_to_id_mapping=tf.identity,
                 id_to_embedding_mapping=id_to_embedding_mapping,
                 conditional_probability_model_initial_state=None,
-                probability_masking_layer=None)
+                probability_masking_layer=None,
+                probability_aggregation_op=tf.add)
             paths, paths_probabilities = autoregressor.call_with_initial_sequence(initial_inputs)
             spec = tf.estimator.EstimatorSpec(
                 mode=mode, 
