@@ -276,8 +276,12 @@ def make_test_example_2_first_elements_known():
     yield {"inputs": np.array([1,7]), "length": np.array(4)}
     yield {"inputs": np.array([1,6]), "length": np.array(4)}
 
-def make_test_example_first_element_known():
+def make_test_example_first_element_known_trimmed():
     yield {"inputs": np.array([1]), "length": np.array(4)}
+def make_test_example_first_element_known_4():
+    yield {"inputs": np.array([1]), "length": np.array(4)}
+def make_test_example_first_element_known_5():
+    yield {"inputs": np.array([1]), "length": np.array(5)}
 
 @pytest.mark.parametrize(
     "make_example_fn, "
@@ -370,6 +374,181 @@ def test_get_autoregressor_model_fn(
     assert predictions_stacked == approx(expected_paths)
 
 
+
+@pytest.mark.parametrize(
+    "make_example_fn, "
+    "batch_size, "
+    "inputs_length, "
+    "prediction_steps, "
+    "alternative_paths, "
+    "expected_paths, "
+    "predictions_mask, "
+    "allowables",
+    [
+        (make_test_example_first_element_known_4, 1, 1, 1, 1,
+            [
+                [
+                    [1,5,6,7,2],
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,1],
+                ]
+            ],
+            [[5],[],[],[]]
+        ), 
+        (make_test_example_first_element_known_4, 1, 1, 1, 1,
+            [
+                [
+                    [1,7,6,5,2],
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,1],
+                ]
+            ],
+            [[7],[],[],[]]
+        ), 
+        (make_test_example_first_element_known_5, 1, 1, 1, 1,
+            [
+                [
+                    [1,6,6,7,5,2]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,1,1]
+                ]
+            ],
+            [[6],[],[],[],[]]
+        ), 
+        (make_test_example_first_element_known_5, 1, 1, 1, 1,
+            [
+                [
+                    [1,6,6,5,0,0]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,0,0]
+                ]
+            ],
+            [[6],[],[5],[],[]]
+        ), 
+        (make_test_example_first_element_known_5, 1, 1, 1, 1,
+            [
+                [
+                    [1,6,6,6,0,0]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,0,0]
+                ]
+            ],
+            [[6],[],[6],[],[]]
+        ), 
+        (make_test_example_first_element_known_5, 1, 1, 1, 1,
+            [
+                [
+                    [1,6,6,7,0,0]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,0,0]
+                ]
+            ],
+            [[6],[],[7],[],[]]
+        ), 
+        (make_test_example_first_element_known_5, 1, 1, 1, 1,
+            [
+                [
+                    [1,6,5,0,0,0]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,0,0,0]
+                ]
+            ],
+            [[6],[5],[],[],[]]
+        ), 
+        (make_test_example_first_element_known_5, 1, 1, 1, 1,
+            [
+                [
+                    [1,6,6,0,0,0]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,0,0,0]
+                ]
+            ],
+            [[6],[6],[],[],[]]
+        ), 
+        (make_test_example_first_element_known_5, 1, 1, 1, 1,
+            [
+                [
+                    [1,6,7,0,0,0]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,0,0,0]
+                ]
+            ],
+            [[6],[7],[],[],[]]
+        ), 
+    ]
+)
+def test_with_mask_get_autoregressor_model_fn(
+    input_data, 
+    embedding_lookup_fn,
+    make_example_fn, 
+    batch_size, 
+    inputs_length,
+    prediction_steps,
+    alternative_paths,
+    expected_paths,
+    predictions_mask,
+    allowables):
+    try:
+        shutil.rmtree("./lstm_test_models")
+    except FileNotFoundError:
+        pass
+    def get_input():
+        dataset = input_data()
+        dataset = dataset.map(force_float_embeddings)
+        return dataset.map(lambda f, l: fix_dimensions(f, l, 20))
+
+    params = {"learning_rate": 0.0005, "number_of_alternatives": alternative_paths}
+
+    DISTRIBUTION_SIZE = 8
+    model_fn = get_autoregressor_model_fn(
+        DISTRIBUTION_SIZE, 
+        id_to_embedding_mapping=lambda x: tf.to_float(embedding_lookup_fn(x)), 
+        mask_allowables=allowables)
+
+    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir="./lstm_test_models")
+    for _ in range(3):
+        estimator.train(lambda: get_input(), steps=100)
+        eval_result = estimator.evaluate(get_input, steps=3)
+        print("Eval results")
+        print(eval_result)
+
+
+    predictions = estimator.predict(get_test_input_fn(make_example_fn, batch_size, inputs_length))
+    predictions = [*itertools.islice(predictions, prediction_steps)]
+    predictions_stacked = np.stack([o["paths"] for o in predictions])
+    
+    predictions_stacked *= predictions_mask # because this elements are after the real last element so we don't care (there was no such cases in examples in dataset )
+    
+    assert predictions_stacked == approx(expected_paths)
+
+
 @pytest.mark.parametrize(
     "make_example_fn, "
     "batch_size, "
@@ -378,7 +557,7 @@ def test_get_autoregressor_model_fn(
     "alternative_paths, "
     "expected_paths, ",
     [
-        (make_test_example_first_element_known, 1, 1, 3, 3,
+        (make_test_example_first_element_known_trimmed, 1, 1, 3, 3,
             [
                     np.array([1,5,6,7,2,]),
                     np.array([1,7,6,5,2,]),

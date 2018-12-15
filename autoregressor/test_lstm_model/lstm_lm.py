@@ -3,6 +3,7 @@ import tensorflow as tf
 import utils
 from layers_utils import AffineProjectionPseudoCell
 from autoregression_with_alternatives import AutoregressionWithAlternativePaths
+from element_probablity_mask import ElementProbabilityMasking
 
 NUM_UNITS = 30
 NUM_LAYERS = 3
@@ -118,8 +119,7 @@ def get_language_model_fn(vocab_size):
     return language_model_fn
 
 
-
-def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping):
+def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping, mask_allowables=None):
     def autoregressor_model_fn(features, labels, mode, params):
         # Args:
         #
@@ -129,7 +129,6 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping):
         # params:   User-defined hyper-parameters, currently `learning_rate` only.
 
         predictor = PredictNext(NUM_UNITS, NUM_LAYERS, vocab_size)
-
         if mode == tf.estimator.ModeKeys.PREDICT:
             initial_inputs = features["inputs"] # expect tensor of a shape [batch_size] with first elemetns
             length = features["length"] # expect tensor of a shape [batch_size] with number of elements to generate
@@ -137,6 +136,15 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping):
             if len(length.shape) != 0:
                 print("warning, multiple output sequence length for one batch not supported")
                 length = length[0]
+            if mask_allowables is not None:
+                mask = ElementProbabilityMasking(
+                    mask_allowables, 
+                    vocab_size, 
+                    0, 
+                    vocab_size, 
+                    tf.identity)
+            else:
+                mask = None
             autoregressor = AutoregressionWithAlternativePaths(
                 conditional_probability_model=predictor,
                 number_of_alternatives=params["number_of_alternatives"],
@@ -144,7 +152,7 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping):
                 index_in_probability_distribution_to_id_mapping=tf.identity,
                 id_to_embedding_mapping=id_to_embedding_mapping,
                 conditional_probability_model_initial_state=None,
-                probability_masking_layer=None,
+                probability_masking_layer=mask,
                 probability_aggregation_op=tf.add)
             paths, paths_probabilities = autoregressor.call_with_initial_sequence(initial_inputs)
             spec = tf.estimator.EstimatorSpec(

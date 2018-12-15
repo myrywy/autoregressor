@@ -33,7 +33,8 @@ class AutoregressionInitializer:
             number_of_ouput_paths, 
             index_in_probability_distribution_to_element_id_mapping, 
             id_to_embedding_mapping, 
-            state_dtype=tf.float32):
+            state_dtype=tf.float32,
+            probability_masking_layer=None):
         self.conditional_probability_model = conditional_probability_model
         self.number_of_ouput_paths = number_of_ouput_paths
         self.index_in_probability_distribution_to_element_id_mapping = index_in_probability_distribution_to_element_id_mapping
@@ -42,6 +43,7 @@ class AutoregressionInitializer:
         extended_mapping = lambda t: self.id_to_embedding_mapping(t[:,0])
         self.model_feeder = ConditionalProbabilityModelFeeder(conditional_probability_model, extended_mapping)
         self.state_dtype = state_dtype
+        self.probability_masking_layer = probability_masking_layer
 
     def call(self, input, conditional_probability_model_initial_state=None, sequence_length=None):
         """
@@ -69,6 +71,9 @@ class AutoregressionInitializer:
             dtype=self.DEFAULT_PROBABILITY_DTYPE
         )
         probability_distributions = output[:, tf.shape(output)[1]-1]
+        if self.probability_masking_layer is not None:
+            step = tf.ones((batch_size,), dtype=tf.int32) * tf.shape(input)[1]
+            probability_distributions = self.probability_masking_layer(probability_distributions, step=step)
         probabilities, element_indices = tf.nn.top_k(probability_distributions, self.number_of_ouput_paths)
         element_ids = tf.map_fn(self.index_in_probability_distribution_to_element_id_mapping, element_indices)
 
@@ -227,8 +232,9 @@ class AutoregressionWithAlternativePaths:
         self.initializer = AutoregressionInitializer(
             self.conditional_probability_model,
             self.number_of_alternatives,
-            self.index_in_probability_distribution_to_id_mapping, 
-            self.id_to_embedding_mapping
+            self.index_in_probability_distribution_to_id_mapping,             
+            self.id_to_embedding_mapping,
+            probability_masking_layer=probability_masking_layer
             )
         self.extender = AutoregressionExtender(
             self.regresor_step, 
@@ -397,7 +403,6 @@ class AutoregressionWithAlternativePathsStep(tf.nn.rnn_cell.RNNCell):
             new_probability_model_states = self._recurrent_gather(new_probability_model_states, sequence_index)
         else:
             new_probability_model_states = tf.gather(new_probability_model_states, sequence_index)
-
         next_element_ids = self.index_in_probability_distribution_to_element_id_mapping(element_index)
         new_paths = self._insert(new_paths, next_element_ids, step)
         return probability_values, new_paths, new_probability_model_states
