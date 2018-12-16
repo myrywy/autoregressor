@@ -11,5 +11,8 @@ test_checkpoints/*
 test_lstm_model/.pytest_cache/*
 test_lstm_model/__pycache__/*
 test_lstm_model/test_checkpoints/*
+htmlcov/*
+data/*
+vocabularies/*
 ../test_regression_with_alternatives.py
 
