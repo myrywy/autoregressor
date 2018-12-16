@@ -15,6 +15,7 @@ import pytest
 from pytest import approx
 
 from lstm_lm import get_language_model_fn, get_autoregressor_model_fn, language_model_input_dataset
+from config import TEST_TMP_DIR
 
 SEED = 0 # this is used with numpy random seed in each test
 tf.set_random_seed(1) # this must be set before graph is made, otherwise it random sequence has already some random values and fixing seed dosn't ensure reproducability
@@ -132,7 +133,7 @@ def softmax_to_winner(sequences):
 
 def test_get_language_model_fn(input_data, embedding_lookup_fn):
     try:
-        shutil.rmtree("./lstm_test_models")
+        shutil.rmtree(TEST_TMP_DIR)
     except FileNotFoundError:
         pass
 
@@ -141,7 +142,7 @@ def test_get_language_model_fn(input_data, embedding_lookup_fn):
         return dataset.map(lambda f, l: fix_dimensions(f, l, 20))
 
 
-    estimator = tf.estimator.Estimator(get_language_model_fn(8), params={"learning_rate": 0.0005}, model_dir="./lstm_test_models")
+    estimator = tf.estimator.Estimator(get_language_model_fn(8), params={"learning_rate": 0.0005}, model_dir=TEST_TMP_DIR)
     for _ in range(10):
         estimator.train(lambda: get_input(), steps=100)
         eval_result = estimator.evaluate(get_input, steps=3)
@@ -345,7 +346,7 @@ def test_get_autoregressor_model_fn(
     expected_paths,
     predictions_mask):
     try:
-        shutil.rmtree("./lstm_test_models")
+        shutil.rmtree(TEST_TMP_DIR)
     except FileNotFoundError:
         pass
     def get_input():
@@ -357,7 +358,7 @@ def test_get_autoregressor_model_fn(
 
     model_fn = get_autoregressor_model_fn(8, id_to_embedding_mapping=lambda x: tf.to_float(embedding_lookup_fn(x)))
 
-    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir="./lstm_test_models")
+    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir=TEST_TMP_DIR)
     for _ in range(3):
         estimator.train(lambda: get_input(), steps=100)
         eval_result = estimator.evaluate(get_input, steps=3)
@@ -516,7 +517,7 @@ def test_with_mask_get_autoregressor_model_fn(
     predictions_mask,
     allowables):
     try:
-        shutil.rmtree("./lstm_test_models")
+        shutil.rmtree(TEST_TMP_DIR)
     except FileNotFoundError:
         pass
     def get_input():
@@ -532,7 +533,7 @@ def test_with_mask_get_autoregressor_model_fn(
         id_to_embedding_mapping=lambda x: tf.to_float(embedding_lookup_fn(x)), 
         mask_allowables=allowables)
 
-    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir="./lstm_test_models")
+    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir=TEST_TMP_DIR)
     for _ in range(3):
         estimator.train(lambda: get_input(), steps=100)
         eval_result = estimator.evaluate(get_input, steps=3)
@@ -581,7 +582,7 @@ def test_generating_only_possible_paths_autoregressor_model_fn(
     allowed to generate 3 most probable paths) exactly the same sentences as in training data.
     We generate such a number of elements not to exceed length of shortest sentence."""
     try:
-        shutil.rmtree("./lstm_test_models")
+        shutil.rmtree(TEST_TMP_DIR)
     except FileNotFoundError:
         pass
     def get_input():
@@ -593,7 +594,7 @@ def test_generating_only_possible_paths_autoregressor_model_fn(
 
     model_fn = get_autoregressor_model_fn(8, id_to_embedding_mapping=lambda x: tf.to_float(embedding_lookup_fn(x)))
 
-    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir="./lstm_test_models")
+    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir=TEST_TMP_DIR)
     for _ in range(10):
         estimator.train(lambda: get_input(), steps=100)
         eval_result = estimator.evaluate(get_input, steps=3)

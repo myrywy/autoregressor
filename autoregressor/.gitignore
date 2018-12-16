@@ -11,6 +11,7 @@ test_checkpoints/*
 test_lstm_model/.pytest_cache/*
 test_lstm_model/__pycache__/*
 test_lstm_model/test_checkpoints/*
+tmp_test_data/*
 htmlcov/*
 data/*
 vocabularies/*
