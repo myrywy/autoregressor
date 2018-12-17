@@ -16,4 +16,5 @@ htmlcov/*
 data/*
 vocabularies/*
 ../test_regression_with_alternatives.py
-
+*.pyc
+*.pyo
