@@ -16,11 +16,15 @@ class MockVocab(Vocabulary):
         return lookup_table.lookup(word)+self.FIRST_ID
 
     def id_to_word_op(self, id):
+        if isinstance(id, tf.Tensor) and id.dtype == tf.int32:
+            id = tf.cast(id, tf.int64)
         id = tf.convert_to_tensor(id, dtype=tf.int64)
         lookup_table = tf.contrib.lookup.index_to_string_table_from_tensor(self.tokens)
         return lookup_table.lookup(id-self.FIRST_ID)
 
     def id_to_vector_op(self, id):
+        if isinstance(id, tf.Tensor) and id.dtype == tf.int32:
+            id = tf.cast(id, tf.int64)
         id = tf.convert_to_tensor(id, dtype=tf.int64)
         return tf.squeeze(tf.nn.embedding_lookup(tf.expand_dims(self.vectors, 1), id-self.FIRST_ID), axis=1)
 

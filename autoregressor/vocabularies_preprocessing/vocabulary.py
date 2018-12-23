@@ -60,19 +60,26 @@ class Vocabulary(ABC):
         Returns:
             tf.Tensor: 2D tensor of float type
         """
+        batch_size = tf.shape(id)[:1]
         default_vector = self._maybe_tile_to_vector_size(default)
-        a_valid_id = self.get_valid_id_example()
+        default_vector = tf.gather([default_vector], tf.zeros(batch_size, dtype=tf.int32), name="repeat_in_batch_size_rows")
+        a_valid_id = tf.tile([self.get_valid_id_example()], batch_size)
         use_default = tf.equal(id, self.get_non_id_integer())
         valid_ids = tf.where(use_default, a_valid_id, id)
         valid_vectors = self.id_to_vector_op(valid_ids)
         return tf.where(use_default, default_vector, valid_vectors)
 
+
     def _maybe_tile_to_vector_size(self, vector_or_scalar):
+        """If vector_or_scalar is scalar returns vector produced by tiling scalar to appropriate size, otherwise returns vector_or_scalar itself"""
         t = tf.convert_to_tensor(vector_or_scalar, dtype=Vocabulary.VECTOR_TYPE)
         vector_size = self.vector_size()
+        t = tf.Print(t, [t], message="A: ", summarize=1000)
         if len(t.shape) == 0:
             t = tf.tile([t], [vector_size])
+        t = tf.Print(t, [t], message="B: ", summarize=1000)
         assert t.shape.is_compatible_with([vector_size]), "Incompatible vector size"
+        return t
         
     @abstractmethod
     def special_unit_to_id(self, special_unit):
@@ -117,7 +124,7 @@ class Vocabulary(ABC):
         """Returns size of embedding vectors in the vocabulary.
 
         Returns:
-            int or tf.Tensor: If tensor then it should be a scalar.
+            int: If tensor then it should be a scalar.
         """
         pass
 
