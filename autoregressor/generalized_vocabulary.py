@@ -7,12 +7,13 @@ class SpecialUnit:
 
 class GeneralizedVocabulary:
     """Creates generalizations of identifiers and vectors from vocabulary to include special units.
-    
+
     Args:
         vocabulary (Vocabulary): vocabulary to generalize
         special_elements (list): list of names of special units from SpecialUnit to be included in generalized vocabulary"""
     def __init__(self, vocabulary, special_elements):
         self._vocab = vocabulary
+        self._special_elements_order = tuple(special_elements)
         self._special_elements, self._offset = self._initialize_special_elements_ids(special_elements)
 
     def get_special_unit_id(self, special_unit_name):
@@ -53,12 +54,12 @@ class GeneralizedVocabulary:
         id_vocab = self.generalized_id_to_vocab_id(id_generalized)
         embedding_vector = self._vocab.id_to_vecor_or_default(id_vocab)
         return tf.concat((features_vector, embedding_vector), axis=1)
-        
+
     def encoded_features(self, id_generalized):
         if isinstance(id_generalized, tf.Tensor):
             id_generalized = tf.cast(id_generalized, tf.int64)
         id_generalized = tf.convert_to_tensor(id_generalized, dtype=tf.int64)
-        special_element_ids = [*sorted(self._special_elements.values())]
+        special_element_ids = [self._special_elements[special_element_name] for special_element_name in self._special_elements_order]
         feature_number = [*range(len(special_element_ids))]
         number_of_features = len(feature_number)
         special_element_ids = tf.constant(special_element_ids, dtype=tf.int64)
