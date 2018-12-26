@@ -102,11 +102,19 @@ class DataPipeline:
 
 class LmInputData(DataPipeline):
     def __init__(self, vocab):
-        self._vocab_generalized = vocab_generalized = GeneralizedVocabulary(vocab)
-        self.add_unit_transformation(vocab.word_to_id)
-        self.add_unit_transformation(vocab_generalized.vocab_id_to_generalized_id)
+        super(LmInputData, self).__init__()
+        self._vocab_generalized = vocab_generalized = GeneralizedVocabulary(
+                vocab,
+                [
+                    SpecialUnit.START_OF_SEQUENCE,
+                    SpecialUnit.END_OF_SEQUENCE,
+                    SpecialUnit.OUT_OF_VOCABULARY
+                ]
+            )
+        self.add_unit_transformation(vocab.word_to_id_op())
+        self.add_unit_transformation(vocab_generalized.vocab_id_to_generalized_id())
         self.add_structural_transformation(self.make_input_target_example)
-        self.add_unit_transformation(vocab_generalized.generalized_id_to_extended_vector, 0, "inputs")
+        self.add_unit_transformation(vocab_generalized.generalized_id_to_extended_vector(), 0, "inputs")
 
     def make_input_target_example(self, sequence):
         """Transforms sequence into pair of input_sequnce and targets that can be used to learn language model.
