@@ -139,13 +139,15 @@ def test_step_call_masking(alternatives, output_length, batch_size):
     
 
     for i, output in enumerate(r_outputs):
-        assert output == approx([expected_path_probabilities[i+1]])
+        assert output == approx(np.array([expected_path_probabilities[i+1]]))
     for i, state in enumerate(r_states):
         assert state.paths == approx(
-                [
-                    expected_paths[i],
-                ]
+            np.array(
+                    [
+                        expected_paths[i],
+                    ]
+                )
             )
-        assert state.path_probabilities == approx([expected_path_probabilities[i]])
+        assert state.path_probabilities == approx(np.array([expected_path_probabilities[i]]))
         assert state.step == approx(np.array([[i+1]*alternatives]))
 

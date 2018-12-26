@@ -1,4 +1,5 @@
 from mock_prob_model import *
+import numpy as np
 import pytest
 from pytest import approx
 
@@ -25,32 +26,32 @@ def test_mock_model():
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant(1), initial_state))
 
-    assert pr_estimation == approx([0.6,0.4,0.0])
-    assert new_state == (1, approx([1,0,0]))
+    assert pr_estimation == approx(np.array([0.6,0.4,0.0]))
+    assert new_state == (1, approx(np.array([1,0,0])))
 
 
     initial_state = (tf.constant(0), tf.constant([0,0,0]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant(2), initial_state))
 
-    assert pr_estimation == approx([0.0,0.0,1.0])
-    assert new_state == (1, approx([2,0,0]))
+    assert pr_estimation == approx(np.array([0.0,0.0,1.0]))
+    assert new_state == (1, approx(np.array([2,0,0])))
 
 
     initial_state = (tf.constant(1), tf.constant([1,0,0]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant(1), initial_state))
 
-    assert pr_estimation == approx([0.6,0.4,0.0])
-    assert new_state == (2, approx([1,1,0]))
+    assert pr_estimation == approx(np.array([0.6,0.4,0.0]))
+    assert new_state == (2, approx(np.array([1,1,0])))
 
 
     initial_state = (tf.constant(1), tf.constant([1,0,0]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant(2), initial_state))
 
-    assert pr_estimation == approx([0.95,0.05,0.0])
-    assert new_state == (2, approx([1,2,0]))
+    assert pr_estimation == approx(np.array([0.95,0.05,0.0]))
+    assert new_state == (2, approx(np.array([1,2,0])))
 
 
 def test_mock_model_first_dim_batch():
@@ -73,32 +74,32 @@ def test_mock_model_first_dim_batch():
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant([[1]]), initial_state))
 
-    assert pr_estimation == approx([[0.6,0.4,0.0]])
-    assert new_state == (1, approx([[[1],[0],[0]]]))
+    assert pr_estimation == approx(np.array([[0.6,0.4,0.0]]))
+    assert new_state == (1, approx(np.array([[[1],[0],[0]]])))
 
 
     initial_state = (tf.constant(0), tf.constant([[[0],[0],[0]]]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant([[2]]), initial_state))
 
-    assert pr_estimation == approx([[0.0,0.0,1.0]])
-    assert new_state == (1, approx([[[2],[0],[0]]]))
+    assert pr_estimation == approx(np.array([[0.0,0.0,1.0]]))
+    assert new_state == (1, approx(np.array([[[2],[0],[0]]])))
 
 
     initial_state = (tf.constant(1), tf.constant([[[1],[0],[0]]]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant([[1]]), initial_state))
 
-    assert pr_estimation == approx([[0.6,0.4,0.0]])
-    assert new_state == (2, approx([[[1],[1],[0]]]))
+    assert pr_estimation == approx(np.array([[0.6,0.4,0.0]]))
+    assert new_state == (2, approx(np.array([[[1],[1],[0]]])))
 
 
     initial_state = (tf.constant(1), tf.constant([[[1],[0],[0]]]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant([[2]]), initial_state))
 
-    assert pr_estimation == approx([[0.95,0.05,0.0]])
-    assert new_state == (2, approx([[[1],[2],[0]]]))
+    assert pr_estimation == approx(np.array([[0.95,0.05,0.0]]))
+    assert new_state == (2, approx(np.array([[[1],[2],[0]]])))
 
 
 def test_mock_model_layer_step():
@@ -120,32 +121,32 @@ def test_mock_model_layer_step():
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant(1), initial_state))
 
-    assert pr_estimation == approx([0.6,0.4,0.0])
-    assert new_state == (1, approx([1,0,0]))
+    assert pr_estimation == approx(np.array([0.6,0.4,0.0]))
+    assert new_state == (1, approx(np.array([1,0,0])))
 
 
     initial_state = (tf.constant(0), tf.constant([0,0,0]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant(2), initial_state))
 
-    assert pr_estimation == approx([0.0,0.0,1.0])
-    assert new_state == (1, approx([2,0,0]))
+    assert pr_estimation == approx(np.array([0.0,0.0,1.0]))
+    assert new_state == (1, approx(np.array([2,0,0])))
 
 
     initial_state = (tf.constant(1), tf.constant([1,0,0]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant(1), initial_state))
 
-    assert pr_estimation == approx([0.6,0.4,0.0])
-    assert new_state == (2, approx([1,1,0]))
+    assert pr_estimation == approx(np.array([0.6,0.4,0.0]))
+    assert new_state == (2, approx(np.array([1,1,0])))
 
 
     initial_state = (tf.constant(1), tf.constant([1,0,0]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant(2), initial_state))
 
-    assert pr_estimation == approx([0.95,0.05,0.0])
-    assert new_state == (2, approx([1,2,0]))
+    assert pr_estimation == approx(np.array([0.95,0.05,0.0]))
+    assert new_state == (2, approx(np.array([1,2,0])))
 
 
 def test_mock_model_layer_step_deeper_input():
@@ -167,32 +168,32 @@ def test_mock_model_layer_step_deeper_input():
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant([1,1]), initial_state))
 
-    assert pr_estimation == approx([0.6,0.4,0.0])
-    assert new_state == (1, approx([[1,1],[0,0],[0,0]]))
+    assert pr_estimation == approx(np.array([0.6,0.4,0.0]))
+    assert new_state == (1, approx(np.array([[1,1],[0,0],[0,0]])))
 
 
     initial_state = (tf.constant(0), tf.constant([(0,0),(0,0),(0,0)]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant([2,2]), initial_state))
 
-    assert pr_estimation == approx([0.0,0.0,1.0])
-    assert new_state == (1, approx([[2,2],[0,0],[0,0]]))
+    assert pr_estimation == approx(np.array([0.0,0.0,1.0]))
+    assert new_state == (1, approx(np.array([[2,2],[0,0],[0,0]])))
 
 
     initial_state = (tf.constant(1), tf.constant([(1,1),(0,0),(0,0)]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant([1,1]), initial_state))
 
-    assert pr_estimation == approx([0.6,0.4,0.0])
-    assert new_state == (2, approx([[1,1],[1,1],[0,0]]))
+    assert pr_estimation == approx(np.array([0.6,0.4,0.0]))
+    assert new_state == (2, approx(np.array([[1,1],[1,1],[0,0]])))
 
 
     initial_state = (tf.constant(1), tf.constant([(1,1),(0,0),(0,0)]))
     with tf.Session() as sess:
         pr_estimation, new_state = sess.run(model(tf.constant([2,2]), initial_state))
 
-    assert pr_estimation == approx([0.95,0.05,0.0])
-    assert new_state == (2, approx([[1,1],[2,2],[0,0]]))
+    assert pr_estimation == approx(np.array([0.95,0.05,0.0]))
+    assert new_state == (2, approx(np.array([[1,1],[2,2],[0,0]])))
 
 
 
@@ -227,8 +228,8 @@ def test_mock_model_layer_as_rnn():
     print(r_outputs)
     print("r_final_state")
     print(r_final_state)
-    assert r_outputs == approx([[[0.6, 0.4, 0.0],[0.6, 0.4, 0.0]]])
-    assert r_final_state == (2, approx([[[1],[1],[0]]]))
+    assert r_outputs == approx(np.array([[[0.6, 0.4, 0.0],[0.6, 0.4, 0.0]]]))
+    assert r_final_state == (2, approx(np.array([[[1],[1],[0]]])))
 
 
 def test_naive_lookup_op():
@@ -295,14 +296,14 @@ def test_naive_lookup_op_batched():
 
     with tf.Session() as sess:
         for i in range(len(e_1_1)):
-            assert sess.run(l_1_1(tf.constant([k1[i]]))) == approx([e_1_1[i]])
+            assert sess.run(l_1_1(tf.constant([k1[i]]))) == approx(np.array([e_1_1[i]]))
 
         for i in range(len(e_1_2)):
-            assert sess.run(l_1_2(tf.constant([k1[i]]))) == approx([e_1_2[i]])
+            assert sess.run(l_1_2(tf.constant([k1[i]]))) == approx(np.array([e_1_2[i]]))
 
         for i in range(len(e_2_3)):
-            assert sess.run(l_2_3(tf.constant([k2[i]]))) == approx([e_2_3[i]])
+            assert sess.run(l_2_3(tf.constant([k2[i]]))) == approx(np.array([e_2_3[i]]))
 
     with tf.Session() as sess:
         for i in range(len(e_2_4)):
-            assert sess.run(l_2_4(tf.constant([k2[i]]))) == approx([e_2_4[i]])
+            assert sess.run(l_2_4(tf.constant([k2[i]]))) == approx(np.array([e_2_4[i]]))

@@ -1,6 +1,7 @@
 import pytest
 from pytest import approx 
 import tensorflow as tf
+import numpy as np
 from utils import parallel_nested_tuples_apply, batched_top_k_from_2d_tensor, repeat_in_ith_dimension
 
 @pytest.mark.parametrize("input, expected_output, fn, a, k", 
@@ -311,9 +312,9 @@ def test_batched_top_k_from_2d_tensor(input, k, expected_values, expected_indice
     with tf.Session() as sess:
         r_vailues, r_indices_0, r_indices_1 = sess.run((values, indices_0, indices_1))
 
-    assert r_vailues == approx(expected_values)
-    assert r_indices_0 == approx(expected_indices_0)
-    assert r_indices_1 == approx(expected_indices_1)
+    assert r_vailues == approx(np.array(expected_values))
+    assert r_indices_0 == approx(np.array(expected_indices_0))
+    assert r_indices_1 == approx(np.array(expected_indices_1))
 
 @pytest.fixture
 def tensor3d():

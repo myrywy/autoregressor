@@ -100,9 +100,9 @@ def test_language_model_input_dataset(embedding_lookup_fn):
     with tf.Session() as sess:
         for expected_feature, expected_label in expected:
             r_features, r_labels = sess.run(next_example)
-            assert r_features["inputs"] == approx(expected_feature["inputs"])
-            assert r_features["length"] == approx(expected_feature["length"])
-            assert r_labels["targets"] == approx(expected_label["targets"])
+            assert r_features["inputs"] == approx(np.array(expected_feature["inputs"]))
+            assert r_features["length"] == approx(np.array(expected_feature["length"]))
+            assert r_labels["targets"] == approx(np.array(expected_label["targets"]))
 
 # Auxiliary functions TODO: maybe move some of them to  utils, they can be useful outsite test cases
 def fix_dimensions(features, labels, batch_size):
@@ -157,7 +157,7 @@ def test_get_language_model_fn(input_data, embedding_lookup_fn):
     ]
     result = np.stack(winners)[:, 1:]
     result[0:2, -1] = 0
-    assert expected == approx(result)
+    assert np.array(expected) == approx(result)
 
 def test_input_data(embedding_lookup_fn):
     """This test is checking if fixture function produces what is expected. Kind of learning/sanity check."""
@@ -252,13 +252,13 @@ def test_input_data(embedding_lookup_fn):
     expected_2_length = [5,4,4,5,4,4,5,4,4,5,]
     # dataset consist of tuple of dicts of tensors interpreted as features (first dict, used as network input) and labels (second dict used as network's gold standard)
 
-    assert batch_1[1]["targets"] == approx(expected_1_targets)
-    assert batch_2[1]["targets"] == approx(expected_2_targets)
+    assert batch_1[1]["targets"] == approx(np.array(expected_1_targets))
+    assert batch_2[1]["targets"] == approx(np.array(expected_2_targets))
 
-    assert batch_1[0]["inputs"] == approx(expected_1_inputs)
-    assert batch_2[0]["inputs"] == approx(expected_2_inputs)
-    assert batch_1[0]["length"] == approx(expected_1_length)
-    assert batch_2[0]["length"] == approx(expected_2_length)
+    assert batch_1[0]["inputs"] == approx(np.array(expected_1_inputs))
+    assert batch_2[0]["inputs"] == approx(np.array(expected_2_inputs))
+    assert batch_1[0]["length"] == approx(np.array(expected_1_length))
+    assert batch_2[0]["length"] == approx(np.array(expected_2_length))
 
 
 def get_test_input_fn(make_example_fn, batch_size, inputs_length):
@@ -372,7 +372,7 @@ def test_get_autoregressor_model_fn(
     
     predictions_stacked *= predictions_mask # because this elements are after the real last element so we don't care (there was no such cases in examples in dataset )
     
-    assert predictions_stacked == approx(expected_paths)
+    assert predictions_stacked == approx(np.array(expected_paths))
 
 
 
@@ -547,7 +547,7 @@ def test_with_mask_get_autoregressor_model_fn(
     
     predictions_stacked *= predictions_mask # because this elements are after the real last element so we don't care (there was no such cases in examples in dataset )
     
-    assert predictions_stacked == approx(expected_paths)
+    assert predictions_stacked == approx(np.array(expected_paths))
 
 
 @pytest.mark.parametrize(

@@ -2,6 +2,7 @@ from corpora_preprocessing.simple_examples import text_dataset_to_token_ids, tok
 from vocabularies_preprocessing.glove300d import get_words_to_id_op, get_id_to_word_op
 
 import tensorflow as tf
+import numpy as np
 from pytest import approx
 from itertools import islice
 
@@ -28,9 +29,9 @@ def test_words_to_id_glove():
         l1 = sess.run(next_element)
         l2 = sess.run(next_element)
         l3 = sess.run(next_element)
-    assert l1 == approx([96, 21, 30, 40, 536, 21594])
-    assert l2 == approx([42, 212, 2, 94, 8707, 1126, 2616, 127, 40, 1213, 3195, 15014, 28, 2, 70717, 23749, 3660, 1149, 29571, 1630, 504, 122, 5, 21, 7, 2, 1009, 1193, 21, 5333, 2470, 4, 767, 27, 401, 5, 10436])
-    assert l3 == approx([85, 3972, 35185, 2545, 149, 2, 28428, 1630, 4575, 2377, 58, 106, 804, 12445, 216, 3644, 4, 970, 2, 1929, 8618, 7, 227, 5881, 3, 14521])
+    assert l1 == approx(np.array([96, 21, 30, 40, 536, 21594]))
+    assert l2 == approx(np.array([42, 212, 2, 94, 8707, 1126, 2616, 127, 40, 1213, 3195, 15014, 28, 2, 70717, 23749, 3660, 1149, 29571, 1630, 504, 122, 5, 21, 7, 2, 1009, 1193, 21, 5333, 2470, 4, 767, 27, 401, 5, 10436]))
+    assert l3 == approx(np.array([85, 3972, 35185, 2545, 149, 2, 28428, 1630, 4575, 2377, 58, 106, 804, 12445, 216, 3644, 4, 970, 2, 1929, 8618, 7, 227, 5881, 3, 14521]))
 
 
 def test_words_to_id_glove_estimator():
@@ -53,9 +54,9 @@ def test_words_to_id_glove_estimator():
     r = estimator.train(get_input, max_steps=1)
     r = estimator.predict(get_input)
     l1, l2, l3 = islice(r, 3)
-    assert l1 == approx([96, 21, 30, 40, 536, 21594])
-    assert l2 == approx([42, 212, 2, 94, 8707, 1126, 2616, 127, 40, 1213, 3195, 15014, 28, 2, 70717, 23749, 3660, 1149, 29571, 1630, 504, 122, 5, 21, 7, 2, 1009, 1193, 21, 5333, 2470, 4, 767, 27, 401, 5, 10436])
-    assert l3 == approx([85, 3972, 35185, 2545, 149, 2, 28428, 1630, 4575, 2377, 58, 106, 804, 12445, 216, 3644, 4, 970, 2, 1929, 8618, 7, 227, 5881, 3, 14521])
+    assert l1 == approx(np.array([96, 21, 30, 40, 536, 21594]))
+    assert l2 == approx(np.array([42, 212, 2, 94, 8707, 1126, 2616, 127, 40, 1213, 3195, 15014, 28, 2, 70717, 23749, 3660, 1149, 29571, 1630, 504, 122, 5, 21, 7, 2, 1009, 1193, 21, 5333, 2470, 4, 767, 27, 401, 5, 10436]))
+    assert l3 == approx(np.array([85, 3972, 35185, 2545, 149, 2, 28428, 1630, 4575, 2377, 58, 106, 804, 12445, 216, 3644, 4, 970, 2, 1929, 8618, 7, 227, 5881, 3, 14521]))
 
 def test_two_way_words_id_transformation_glove_estimator():
     def get_input():

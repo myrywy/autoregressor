@@ -62,9 +62,9 @@ def test_OneElementConditionalProbabilityModel(batch_size):
     with tf.Session() as sess:
         r_zero_state, r_output, r_state = sess.run((zero_state, output, state))
 
-    assert r_zero_state == approx([[0]]*batch_size)
-    assert r_output == approx([[1]]*batch_size)
-    assert r_state == approx([[1]]*batch_size)
+    assert r_zero_state == approx(np.array([[0]]*batch_size))
+    assert r_output == approx(np.array([[1]]*batch_size))
+    assert r_state == approx(np.array([[1]]*batch_size))
 
 
 @pytest.mark.parametrize("alternatives, output_length, batch_size",
@@ -98,18 +98,20 @@ def test_step_call(alternatives, output_length, batch_size):
         r_outputs, r_states = sess.run((t_outputs, t_states))
     
     for output in r_outputs:
-        assert output == approx([[1.0]*alternatives]*batch_size)
+        assert output == approx(np.array([[1.0]*alternatives]*batch_size))
     
     for i, state in enumerate(r_states):
         assert state.paths == approx(
-                [
+                np.array(
                     [
-                        [0] + [1]*i + [0]*(output_length-i)
-                    ] * alternatives
-                ] * batch_size
+                        [
+                            [0] + [1]*i + [0]*(output_length-i)
+                        ] * alternatives
+                    ] * batch_size
+                )
             )
 
-        assert state.path_probabilities == approx([[1.0]*alternatives]*batch_size)
+        assert state.path_probabilities == approx(np.array([[1.0]*alternatives]*batch_size))
         assert state.step == approx(np.array([[i+1]*alternatives]*batch_size))
 
     

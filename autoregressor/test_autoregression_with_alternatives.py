@@ -150,9 +150,9 @@ def test_step_call(probabilities_with_start_element_no_third):
     with tf.Session() as sess:
         r_zero, r_s1, r_s2, r_s3, r_o1, r_o2, r_o3 = sess.run((zero_state, state1, state2, state3, output1, output2, output3))
 
-    assert r_s1.path_probabilities == approx([[0.5, 0.5]])
-    assert r_s2.path_probabilities == approx([[0.3, 0.2]]) # [0.5*0.6, 0.5*0.4]
-    assert r_s3.path_probabilities == approx([[0.19, 0.18]])
+    assert r_s1.path_probabilities == approx(np.array([[0.5, 0.5]]))
+    assert r_s2.path_probabilities == approx(np.array([[0.3, 0.2]])) # [0.5*0.6, 0.5*0.4]
+    assert r_s3.path_probabilities == approx(np.array([[0.19, 0.18]]))
 
 
 def test_step_call_with_identity_mask(probabilities_with_start_element_no_third):
@@ -173,9 +173,9 @@ def test_step_call_with_identity_mask(probabilities_with_start_element_no_third)
     with tf.Session() as sess:
         r_zero, r_s1, r_s2, r_s3, r_o1, r_o2, r_o3 = sess.run((zero_state, state1, state2, state3, output1, output2, output3))
 
-    assert r_s1.path_probabilities == approx([[0.5, 0.5]])
-    assert r_s2.path_probabilities == approx([[0.3, 0.2]]) # [0.5*0.6, 0.5*0.4]
-    assert r_s3.path_probabilities == approx([[0.19, 0.18]])
+    assert r_s1.path_probabilities == approx(np.array([[0.5, 0.5]]))
+    assert r_s2.path_probabilities == approx(np.array([[0.3, 0.2]])) # [0.5*0.6, 0.5*0.4]
+    assert r_s3.path_probabilities == approx(np.array([[0.19, 0.18]]))
 
 
 def test_step_on_one_path(probabilities_with_start_element):
@@ -204,7 +204,7 @@ def test_step_on_one_path(probabilities_with_start_element):
         r_cp, r_nsp = sess.run((conditional_probability, new_probability_model_states))
         r_zero, r_s1, r_s2, r_s3, r_o1, r_o2, r_o3 = sess.run((zero_state, state1, state2, state3, output1, output2, output3))
 
-    assert r_s3.path_probabilities == approx([0.18])
+    assert r_s3.path_probabilities == approx(np.array([[0.18]]))
 
 
 @pytest.mark.parametrize("target_step,path,expected_prob_dist", [
@@ -241,7 +241,7 @@ def test__compute_next_step_probability(probabilities, target_step, path, expect
     next_step_probability_dist, _ = regresor.conditional_probability_model_feeder.call(previuos_step_output, model_state)
     with tf.Session() as sess:
         r_prob_dist = sess.run(next_step_probability_dist)
-    assert r_prob_dist == approx([expected_prob_dist])
+    assert r_prob_dist == approx(np.array([expected_prob_dist]))
 
 
 def test__top_k_from_2d_tensor():
@@ -336,7 +336,7 @@ def test__insert(batch, values, indices, expected):
     with tf.Session() as sess:
         result = sess.run(new_batch)
 
-    assert result == approx(expected)
+    assert result == approx(np.array(expected))
 
 @pytest.mark.parametrize("input, state, expected_output, expected_state",
 [
@@ -641,9 +641,9 @@ def test_AutoregressionBroadcaster(paths, paths_probabilities, states, zero_stat
     output_paths, output_paths_probabilities, output_states = broadcaster.call(t_paths, t_paths_probabilities, t_states)
     with tf.Session() as sess:
         result_paths, result_paths_probabilites, result_states = sess.run((output_paths, output_paths_probabilities, output_states))
-    assert result_paths == approx(expected_paths)
-    assert result_paths_probabilites == approx(expected_paths_probabilities)
-    assert expected_states == approx(result_states)
+    assert result_paths == approx(np.array(expected_paths))
+    assert result_paths_probabilites == approx(np.array(expected_paths_probabilities))
+    assert expected_states == approx(np.array(result_states))
 
 
 @pytest.mark.parametrize("paths, paths_probabilities, states, zero_state, number_of_output_paths, expected_paths, expected_paths_probabilities, expected_states",
@@ -980,8 +980,8 @@ def test_AutoregressionBroadcaster_with_explicitly_specified_zero_state(paths, p
     output_paths, output_paths_probabilities, output_states = broadcaster.call(t_paths, t_paths_probabilities, t_states)
     with tf.Session() as sess:
         result_paths, result_paths_probabilites, result_states = sess.run((output_paths, output_paths_probabilities, output_states))
-    assert result_paths == approx(expected_paths)
-    assert result_paths_probabilites == approx(expected_paths_probabilities)
+    assert result_paths == approx(np.array(expected_paths))
+    assert result_paths_probabilites == approx(np.array(expected_paths_probabilities))
     state_ok = parallel_nested_tuples_apply([expected_states, result_states], lambda a, b: (a == b).all())
     if isinstance(state_ok, tuple):
         assert state_ok[0]
@@ -1128,8 +1128,8 @@ def test_AutoregressionInitializer(probabilities, input, number_of_output_paths,
     paths, paths_probabilities, states = paths_initializer.call(t_input)
     with tf.Session() as sess:
         result_paths, result_paths_probabilities, states = sess.run((paths, paths_probabilities, states))
-    assert result_paths == approx(expected_paths)
-    assert result_paths_probabilities == approx(expected_paths_probabilities)
+    assert result_paths == approx(np.array(expected_paths))
+    assert result_paths_probabilities == approx(np.array(expected_paths_probabilities))
     
 
 
@@ -1387,10 +1387,10 @@ def test_AutoregressionInitializer_with_explicit_zero_state(probabilities, input
     paths, paths_probabilities, states = paths_initializer.call(t_input, conditional_probability_model_initial_state=zero_state)
     with tf.Session() as sess:
         result_paths, result_paths_probabilities, result_states = sess.run((paths, paths_probabilities, states))
-    assert result_paths == approx(expected_paths)
-    assert result_paths_probabilities == approx(expected_paths_probabilities)
-    assert result_states[0] == approx(expected_states[0])
-    assert result_states[1] == approx(expected_states[1])
+    assert result_paths == approx(np.array(expected_paths))
+    assert result_paths_probabilities == approx(np.array(expected_paths_probabilities))
+    assert result_states[0] == approx(np.array(expected_states[0]))
+    assert result_states[1] == approx(np.array(expected_states[1]))
 
 
 
@@ -2154,10 +2154,10 @@ def test_AutoregressionExtender(probabilities_with_start_element_no_third, input
 
     with tf.Session() as sess:
         r_paths, r_probabilities, r_states  = sess.run((new_paths, new_path_probabilities, new_states))
-    assert r_paths == approx(output_sequence)
-    assert r_probabilities == approx(output_pobabilities)
-    assert r_states[0] == approx(output_states[0])
-    assert r_states[1] == approx(output_states[1])
+    assert r_paths == approx(np.array(output_sequence))
+    assert r_probabilities == approx(np.array(output_pobabilities))
+    assert r_states[0] == approx(np.array(output_states[0]))
+    assert r_states[1] == approx(np.array(output_states[1]))
 
 
 @pytest.mark.parametrize("input, expected_paths, expected_paths_probabilities, steps", 
@@ -2251,5 +2251,5 @@ def test_AutoregressionWithAlternativePaths_no_mask(probabilities_with_start_ele
     paths, paths_probabilities = autoregressor.call(t_input)
     with tf.Session() as sess:
         r_paths, r_paths_probabilities = sess.run((paths, paths_probabilities))
-    assert r_paths == approx(expected_paths)
-    assert r_paths_probabilities == approx(expected_paths_probabilities)
+    assert r_paths == approx(np.array(expected_paths))
+    assert r_paths_probabilities == approx(np.array(expected_paths_probabilities))

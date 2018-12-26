@@ -35,9 +35,8 @@ def expected_mask():
             [0,0,0,0,1,0,0,0,0,0],
         ]
     )
+BATCH_SIZE = 9
 
-
-BATCH_SIZE = len(expected_mask())
 
 @pytest.mark.parametrize("steps,mask_slice", 
     [   # note: step is counted from 1.
