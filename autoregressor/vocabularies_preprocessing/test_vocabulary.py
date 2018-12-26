@@ -21,11 +21,11 @@ from pytest import approx
 )
 def test_id_to_vecor_or_default(id, default, expected_output):
     vocab = MockVocab()
-    t_vector = vocab.id_to_vecor_or_default(id, default=default)
+    t_vector = vocab.id_to_vecor_or_default_op(default=default)(id)
     with tf.Session() as sess:
         sess.run(tf.tables_initializer())
         r_vector = sess.run(t_vector)
-    assert r_vector == approx(expected_output)
+    assert r_vector == approx(np.array(expected_output))
 
 
 @pytest.mark.parametrize("vocab_type, default",
@@ -44,10 +44,10 @@ def test_subclass_non_id_with_id_to_vecor_or_default(vocab_type, default):
     vector_size = vocab.vector_size()
     expected_output_for_non_id = np.array(default) if isinstance(default, list) else np.array([default]*vector_size)
     test_input_ids = tf.constant([not_id, valid_id])
-    t_embedding_or_default = vocab.id_to_vecor_or_default(test_input_ids, default=default)
-    t_valid_vector = vocab.id_to_vector_op(tf.constant([valid_id]))
+    t_embedding_or_default = vocab.id_to_vecor_or_default_op(default=default)(test_input_ids)
+    t_valid_vector = vocab.id_to_vector_op()(tf.constant([valid_id]))
     with tf.Session() as sess:
         r_embedding_or_default = sess.run(t_embedding_or_default)
         r_valid_vector = sess.run(t_valid_vector)
-    assert r_embedding_or_default[0] == approx(expected_output_for_non_id)
-    assert r_embedding_or_default[1] == approx(r_valid_vector[0])
+    assert r_embedding_or_default[0] == approx(np.array(expected_output_for_non_id))
+    assert r_embedding_or_default[1] == approx(np.array(r_valid_vector[0]))

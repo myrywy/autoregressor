@@ -14,7 +14,7 @@ import pytest
 )
 def test_word_to_id_op(word, expected_output):
     vocab = MockVocab()
-    t_id = vocab.word_to_id_op(word)
+    t_id = vocab.word_to_id_op()(word)
     with tf.Session() as sess:
         sess.run(tf.tables_initializer())
         r_id = sess.run(t_id)
@@ -30,7 +30,7 @@ def test_word_to_id_op(word, expected_output):
 )
 def test_id_to_word_op(id, expected_output):
     vocab = MockVocab()
-    t_word = vocab.id_to_word_op(id)
+    t_word = vocab.id_to_word_op()(id)
     with tf.Session() as sess:
         sess.run(tf.tables_initializer())
         r_word = sess.run(t_word)
@@ -47,7 +47,7 @@ def test_id_to_word_op(id, expected_output):
 )
 def test_id_to_vector_op(id, expected_output):
     vocab = MockVocab()
-    t_vector = vocab.id_to_vector_op(id)
+    t_vector = vocab.id_to_vector_op()(id)
     with tf.Session() as sess:
         sess.run(tf.tables_initializer())
         r_vector = sess.run(t_vector)

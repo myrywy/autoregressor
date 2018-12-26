@@ -10,23 +10,35 @@ class MockVocab(Vocabulary):
         self.FIRST_ID = 1
         self.UNKNOWN_WORD_ID = len(self.tokens) + self.FIRST_ID
 
-    def word_to_id_op(self, word):
-        word = tf.convert_to_tensor(word, dtype=tf.string)
-        lookup_table = tf.contrib.lookup.index_table_from_tensor(self.tokens, default_value=self.UNKNOWN_WORD_ID-self.FIRST_ID)
-        return lookup_table.lookup(word)+self.FIRST_ID
+    def word_to_id_op(self):
+        lookup_table = tf.contrib.lookup.index_table_from_tensor(self.tokens,
+                                                                 default_value=self.UNKNOWN_WORD_ID - self.FIRST_ID,
+                                                                 name="MockVocab_word_to_id_lookup")
 
-    def id_to_word_op(self, id):
-        if isinstance(id, tf.Tensor) and id.dtype == tf.int32:
-            id = tf.cast(id, tf.int64)
-        id = tf.convert_to_tensor(id, dtype=tf.int64)
-        lookup_table = tf.contrib.lookup.index_to_string_table_from_tensor(self.tokens)
-        return lookup_table.lookup(id-self.FIRST_ID)
+        def op(word):
+            word = tf.convert_to_tensor(word, dtype=tf.string)
+            return lookup_table.lookup(word)+self.FIRST_ID
 
-    def id_to_vector_op(self, id):
-        if isinstance(id, tf.Tensor) and id.dtype == tf.int32:
-            id = tf.cast(id, tf.int64)
-        id = tf.convert_to_tensor(id, dtype=tf.int64)
-        return tf.squeeze(tf.nn.embedding_lookup(tf.expand_dims(self.vectors, 1), id-self.FIRST_ID), axis=1)
+        return op
+
+    def id_to_word_op(self):
+        lookup_table = tf.contrib.lookup.index_to_string_table_from_tensor(self.tokens, name="MockVocab_id_to_word_lookup")
+
+        def op(id):
+            if isinstance(id, tf.Tensor) and id.dtype == tf.int32:
+                id = tf.cast(id, tf.int64)
+            id = tf.convert_to_tensor(id, dtype=tf.int64)
+            return lookup_table.lookup(id-self.FIRST_ID)
+
+        return op
+
+    def id_to_vector_op(self):
+        def op(id):
+            if isinstance(id, tf.Tensor) and id.dtype == tf.int32:
+                id = tf.cast(id, tf.int64)
+            id = tf.convert_to_tensor(id, dtype=tf.int64)
+            return tf.squeeze(tf.nn.embedding_lookup(tf.expand_dims(self.vectors, 1), id-self.FIRST_ID), axis=1)
+        return op
 
     def special_unit_to_id(self, special_unit_name):
         if special_unit_name == SpecialUnit.OUT_OF_VOCABULARY:

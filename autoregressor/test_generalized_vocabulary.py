@@ -40,7 +40,7 @@ def test_get_special_unit_id__use_already_supported_ids():
 
     gen_oov_id = generalized.get_special_unit_id(SpecialUnit.OUT_OF_VOCABULARY)
     oov_vocab_id = vocab.special_unit_to_id(SpecialUnit.OUT_OF_VOCABULARY)
-    t_oov_id_from_vocab_via_generalized = generalized.vocab_id_to_generalized_id([oov_vocab_id])
+    t_oov_id_from_vocab_via_generalized = generalized.vocab_id_to_generalized_id()([oov_vocab_id])
     with tf.Session() as sess:
         r_oov_id_from_vocab_via_generalized = sess.run(t_oov_id_from_vocab_via_generalized)
     assert r_oov_id_from_vocab_via_generalized[0] == gen_oov_id
@@ -54,7 +54,7 @@ def test_get_special_unit_id__non_supported_ids_get_non_id():
 
     gen_start_id = generalized.get_special_unit_id(SpecialUnit.START_OF_SEQUENCE)
     gen_end_id = generalized.get_special_unit_id(SpecialUnit.END_OF_SEQUENCE)
-    t_vocab_ids = generalized.generalized_id_to_vocab_id([gen_start_id, gen_end_id])
+    t_vocab_ids = generalized.generalized_id_to_vocab_id()([gen_start_id, gen_end_id])
     with tf.Session() as sess:
         r_vocab_ids = sess.run(t_vocab_ids)
     assert r_vocab_ids[0] == non_id
@@ -75,13 +75,13 @@ def test_get_special_unit_id__non_supported_ids_get_non_id():
         ([2], [[0]], [SpecialUnit.START_OF_SEQUENCE]),
     ]
 )
-def test_encoded_features(generalized_id, expected_encoded, special_units):
+def test_encode_features_op(generalized_id, expected_encoded, special_units):
     vocab = MockVocab()
     generalized = GeneralizedVocabulary(vocab, special_units)
 
     generalized_id = tf.convert_to_tensor(generalized_id)
 
-    t_encoded = generalized.encoded_features(generalized_id)
+    t_encoded = generalized.encode_features_op()(generalized_id)
 
     with tf.Session() as sess:
         sess.run(tf.tables_initializer())
@@ -128,7 +128,7 @@ def test_encoded_features(generalized_id, expected_encoded, special_units):
         ),
     ]
 )
-def test_encoded_features_by_special_units_names(special_unit_to_encode,
+def test_encode_features_op_by_special_units_names(special_unit_to_encode,
                                                  supported_special_units,
                                                  expected_encoded):
     vocab = MockVocab()
@@ -137,7 +137,7 @@ def test_encoded_features_by_special_units_names(special_unit_to_encode,
     generalized_id = generalized.get_special_unit_id(special_unit_to_encode)
     generalized_id = tf.convert_to_tensor([generalized_id])
 
-    t_encoded = generalized.encoded_features(generalized_id)
+    t_encoded = generalized.encode_features_op()(generalized_id)
 
     with tf.Session() as sess:
         sess.run(tf.tables_initializer())
@@ -165,7 +165,7 @@ def test_generalized_id_to_vocab_id(generalized_id, expected_vocab_id):
 
     generalized_vocab = GeneralizedVocabulary(vocab, special_units)
     t_generalized_id = tf.convert_to_tensor(generalized_id)
-    t_vocab_id = generalized_vocab.generalized_id_to_vocab_id(t_generalized_id)
+    t_vocab_id = generalized_vocab.generalized_id_to_vocab_id()(t_generalized_id)
 
     with tf.Session() as sess:
         r_vocab_id = sess.run(t_vocab_id)
@@ -189,7 +189,7 @@ def test_vocab_id_to_generalized_id(vocab_id, expected_generalized_id):
     generalized_vocab = GeneralizedVocabulary(vocab, special_units)
 
     t_vocab_id = tf.convert_to_tensor(vocab_id)
-    t_generalized_id = generalized_vocab.vocab_id_to_generalized_id(t_vocab_id)
+    t_generalized_id = generalized_vocab.vocab_id_to_generalized_id()(t_vocab_id)
 
     with tf.Session() as sess:
         r_generalized_id = sess.run(t_generalized_id)
@@ -212,8 +212,8 @@ def test_generalized_to_vocab_to_generalized_idempotent(vocab_type, generalized_
     generalized_vocab = GeneralizedVocabulary(vocab, special_units)
 
     t_generalized_id_original = tf.convert_to_tensor(generalized_id_original)
-    t_vocab_id = generalized_vocab.generalized_id_to_vocab_id(t_generalized_id_original)
-    t_generalized_id_restored = generalized_vocab.vocab_id_to_generalized_id(t_vocab_id)
+    t_vocab_id = generalized_vocab.generalized_id_to_vocab_id()(t_generalized_id_original)
+    t_generalized_id_restored = generalized_vocab.vocab_id_to_generalized_id()(t_vocab_id)
 
     with tf.Session() as sess:
         r_generalized_id_restored = sess.run(t_generalized_id_restored)
@@ -235,7 +235,7 @@ def test_generalized_id_to_vocab_id_on_usupported_specials(vocab_type, unsupport
                         for unit_name in unsupported_special_unit_names]
 
     t_generalized_id = tf.convert_to_tensor(generalized_id)
-    t_vocab_id = generalized_vocab.generalized_id_to_vocab_id(t_generalized_id)
+    t_vocab_id = generalized_vocab.generalized_id_to_vocab_id()(t_generalized_id)
 
     expected_output = [vocab.get_non_id_integer()] * len(unsupported_special_unit_names)
 
@@ -260,8 +260,8 @@ def test_vocab_to_generalized_to_vocab_idempotent(vocab_type, vocab_id_original)
     generalized_vocab = GeneralizedVocabulary(vocab, special_units)
 
     t_vocab_id_original = tf.convert_to_tensor(vocab_id_original)
-    t_generalized_id = generalized_vocab.vocab_id_to_generalized_id(t_vocab_id_original)
-    t_vocab_id_restored = generalized_vocab.generalized_id_to_vocab_id(t_generalized_id)
+    t_generalized_id = generalized_vocab.vocab_id_to_generalized_id()(t_vocab_id_original)
+    t_vocab_id_restored = generalized_vocab.generalized_id_to_vocab_id()(t_generalized_id)
 
     with tf.Session() as sess:
         r_vocab_id_restored = sess.run(t_vocab_id_restored)
@@ -280,9 +280,9 @@ def test_generalized_id_to_extended_vector__composition(special_units_all, vocab
     vocab = vocab_type()
     generalized_vocab = GeneralizedVocabulary(vocab, special_units_all)
 
-    t_vector = generalized_vocab.generalized_id_to_extended_vector(generalized_id)
-    t_features = generalized_vocab.encoded_features(generalized_id)
-    t_embedding = vocab.id_to_vector_op(generalized_vocab.generalized_id_to_vocab_id(generalized_id))
+    t_vector = generalized_vocab.generalized_id_to_extended_vector()(generalized_id)
+    t_features = generalized_vocab.encode_features_op()(generalized_id)
+    t_embedding = vocab.id_to_vector_op()(generalized_vocab.generalized_id_to_vocab_id()(generalized_id))
 
     with tf.Session() as sess:
         sess.run(tf.tables_initializer())
@@ -311,7 +311,7 @@ def test_generalized_id_to_extended_vector(special_units_all, vocab_type, genera
     vocab = vocab_type()
     generalized_vocab = GeneralizedVocabulary(vocab, special_units_all)
 
-    t_vector = generalized_vocab.generalized_id_to_extended_vector(generalized_id)
+    t_vector = generalized_vocab.generalized_id_to_extended_vector()(generalized_id)
 
     with tf.Session() as sess:
         sess.run(tf.tables_initializer())

@@ -9,65 +9,81 @@ class Vocabulary(ABC):
     them inside Estimator i.e. with a new computational graph each time
     train() or predict() is called.
 
+    Graph nodes may be created inside .*_op fuction calls (for example tables initialization; actually tables must
+    be created on _op function call, not inside returned function).
+
     It is assumed that ID assigned to a word must not be negative
     """
     VECTOR_TYPE = tf.float32
 
     @abstractmethod
-    def word_to_id_op(self, word):
-        """Converts words/tokens to integer identifiers used by this vocabulary.
-
-        Args:
-            word (tf.Tensor): 1D tensor of strings
+    def word_to_id_op(self):
+        """Retruns fuction that converts words/tokens to integer identifiers used by this vocabulary.
 
         Returns:
-            tf.Tensor: 1D tensor of integer type
+            Function:
+                Args:
+                    word (tf.Tensor): 1D tensor of strings
+
+                Returns:
+                    tf.Tensor: 1D tensor of integer type
         """
         pass
 
     @abstractmethod
-    def id_to_word_op(self, id):
-        """Converts integer identifiers used by this vocabulary to words/tokens.
+    def id_to_word_op(self):
+        """Retruns fuction that converts integer identifiers used by this vocabulary to words/tokens.
         TODO: describe <Unknown> identifier
 
-        Args:
-            id (tf.Tensor): 1D tensor of of integer type
-
         Returns:
-            tf.Tensor: 1D tensor strings
+            Function:
+                Args:
+                    id (tf.Tensor): 1D tensor of of integer type
+
+                Returns:
+                    tf.Tensor: 1D tensor strings
         """
         pass
 
     @abstractmethod
     def id_to_vector_op(self, id):
-        """Converts integer identifiers used by this vocabulary to embeddings vectors.
-
-        Args:
-            id (tf.Tensor): 1D tensor of strings
+        """Retruns fuction that converts integer identifiers used by this vocabulary to embeddings vectors.
 
         Returns:
-            tf.Tensor: 2D tensor of float type
+            Function:
+                Args:
+                    id (tf.Tensor): 1D tensor of strings
+
+                Returns:
+                    tf.Tensor: 2D tensor of float type
         """
         pass
 
-    def id_to_vecor_or_default(self, id, default=0):
-        """Converts integer identifiers used by this vocabulary to embeddings vectors unless an id is equal to value returned by get_non_id_integer - then it's converted to default.
+    def id_to_vecor_or_default_op(self, default=0):
+        """Retruns fuction that converts integer identifiers used by this vocabulary to embeddings vectors unless an id is equal to value returned by get_non_id_integer - then it's converted to default.
         default is broadcasted to vector_size so it should be either scalar or vector of size equalt to vector_size.
 
         Args:
             id (tf.Tensor): 1D tensor of strings
 
         Returns:
-            tf.Tensor: 2D tensor of float type
+            Function:
+                Returns:
+                    tf.Tensor: 2D tensor of float type
         """
-        batch_size = tf.shape(id)[:1]
-        default_vector = self._maybe_tile_to_vector_size(default)
-        default_vector = tf.gather([default_vector], tf.zeros(batch_size, dtype=tf.int32), name="repeat_in_batch_size_rows")
-        a_valid_id = tf.tile([self.get_valid_id_example()], batch_size)
-        use_default = tf.equal(id, self.get_non_id_integer())
-        valid_ids = tf.where(use_default, a_valid_id, id)
-        valid_vectors = self.id_to_vector_op(valid_ids)
-        return tf.where(use_default, default_vector, valid_vectors)
+        id_to_vector_op = self.id_to_vector_op()
+        def op(id):
+            id = tf.convert_to_tensor(id)
+            batch_size = tf.shape(id)[:1]
+            default_vector = self._maybe_tile_to_vector_size(default)
+            default_vector = tf.gather([default_vector], tf.zeros(batch_size, dtype=tf.int32), name="repeat_in_batch_size_rows")
+            a_valid_id = tf.convert_to_tensor(self.get_valid_id_example(), dtype=id.dtype)
+            a_valid_id = tf.tile([a_valid_id], batch_size)
+            use_default = tf.equal(id, self.get_non_id_integer())
+            valid_ids = tf.where(use_default, a_valid_id, id)
+            valid_vectors = id_to_vector_op(valid_ids)
+            return tf.where(use_default, default_vector, valid_vectors)
+        return op
 
 
     def _maybe_tile_to_vector_size(self, vector_or_scalar):
@@ -124,7 +140,7 @@ class Vocabulary(ABC):
         """Returns size of embedding vectors in the vocabulary.
 
         Returns:
-            int: If tensor then it should be a scalar.
+            int: size of embedding vectors
         """
         pass
 
