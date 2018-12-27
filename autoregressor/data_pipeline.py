@@ -135,4 +135,32 @@ class LmInputData(DataPipeline):
         features["inputs"] = inputs
         labels["targets"] = sequence[1:]
         return (features, labels)
-    
+
+    def _padded_batch(self, dataset, batch_size):
+        def expand_length(features, labels):
+            features["length"] = tf.expand_dims(features["length"], 0)
+            return features, labels
+
+        def flatten_length(features, labels):
+            features["length"] = tf.squeeze(features["length"], axis=[1])
+            return features, labels
+
+        prepared_lm_data = language_model_input_dataset(dataset, embedding_lookup_fn)
+        length_expanded_data = prepared_lm_data.map(expand_length)
+        length_expanded_data = length_expanded_data. \
+            padded_batch(
+            batch_size,
+            padded_shapes=(
+                {"inputs": tf.TensorShape((tf.Dimension(None), tf.Dimension(None))),
+                 "length": tf.TensorShape((tf.Dimension(1),))},
+                {"targets": tf.TensorShape((tf.Dimension(None),))}
+            )
+        )
+        return length_expanded_data.map(flatten_length)
+
+    def _fix_dimensions(self, features, labels, batch_size, vector_size):
+        features["inputs"] = tf.to_float(features["inputs"])
+        features["inputs"].set_shape((batch_size, None, 3))
+        features["length"].set_shape((batch_size,))
+        labels["targets"].set_shape((batch_size, None))
+        return features, labels
