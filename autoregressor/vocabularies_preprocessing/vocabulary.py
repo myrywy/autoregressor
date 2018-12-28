@@ -90,10 +90,8 @@ class Vocabulary(ABC):
         """If vector_or_scalar is scalar returns vector produced by tiling scalar to appropriate size, otherwise returns vector_or_scalar itself"""
         t = tf.convert_to_tensor(vector_or_scalar, dtype=Vocabulary.VECTOR_TYPE)
         vector_size = self.vector_size()
-        t = tf.Print(t, [t], message="A: ", summarize=1000)
         if len(t.shape) == 0:
             t = tf.tile([t], [vector_size])
-        t = tf.Print(t, [t], message="B: ", summarize=1000)
         assert t.shape.is_compatible_with([vector_size]), "Incompatible vector size"
         return t
         
