@@ -1,5 +1,8 @@
 from data_pipeline import LmInputData
 from vocabularies_preprocessing.mock_vocabulary import MockVocab
+from generalized_vocabulary import GeneralizedVocabulary
+from test_lstm_model.lstm_lm import get_autoregressor_model_fn
+from config import TEST_TMP_DIR
 
 import tensorflow as tf
 import numpy as np
@@ -8,7 +11,7 @@ import pytest
 from pytest import approx
 
 from itertools import islice
-
+import shutil
 
 def test_in_out():
     def input_generator():
@@ -205,11 +208,13 @@ def test_in_out_with_estimator():
             input_generator,
             output_types=tf.string
         )
-        return input_pipeline.transform_dataset(input_dataset)
+        return input_pipeline.load_data(input_dataset)
 
     def mock_model_fn(features, labels, mode, params):
         if mode == tf.estimator.ModeKeys.PREDICT:
-            spec = tf.estimator.EstimatorSpec(mode=mode, predictions=features)
+            # Flattens features and labels into one dict (estimator's requirements)
+            output = features.copy()
+            spec = tf.estimator.EstimatorSpec(mode=mode, predictions=output)
         else:
             spec = tf.estimator.EstimatorSpec(mode=mode,
                 predictions=features,
@@ -223,6 +228,59 @@ def test_in_out_with_estimator():
     output = islice(r, 7)
 
     for actual, expected in zip(output, expected_output):
-        assert actual[0]["inputs"] == approx(expected[0]["inputs"])
-        assert actual[0]["length"] == approx(expected[0]["length"])
-        assert actual[1]["targets"] == approx(expected[1]["targets"])
+        actual_length = int(actual["length"])
+        assert actual["inputs"][:actual_length] == approx(expected[0]["inputs"][:actual_length])
+        assert (actual["inputs"][actual_length:] == np.zeros_like(actual["inputs"][actual_length:])).all()
+        assert actual["length"] == approx(expected[0]["length"])
+        #assert actual["targets"] == approx(expected[1]["targets"])
+
+
+def test_in_lm_learning():
+    try:
+        shutil.rmtree(TEST_TMP_DIR)
+    except FileNotFoundError:
+        pass
+    def input_generator():
+        yield ["c", "b", "a"]
+        yield ["a", "b", "c", "d"]
+        yield ["d"]
+
+    def input_fn():
+        vocab = MockVocab()
+        input_pipeline = LmInputData(vocab, batch_size=3)
+        input_dataset = tf.data.Dataset.from_generator(
+            input_generator,
+            output_types=tf.string
+        )
+        return input_pipeline.load_data(input_dataset).repeat()
+    
+    def predict_input_fn():
+        def input():
+            yield {"inputs": [[1, 4], [1, 6]], "length": [4, 4]}, [0,0]
+        return tf.data.Dataset.from_generator(input, 
+            ({"inputs": tf.int32, "length": tf.int32}, tf.int32),
+            ({"inputs": [2,2], "length": [2]}, [2]))
+
+    expected_predictions = [
+        [1, 4, 5, 6, 7, 2],
+        [1, 6, 5, 4, 2]
+    ]
+
+    def model_fn(features, labels, mode, params):
+        vocab_copy = MockVocab()
+        input_pipeline_copy = LmInputData(vocab_copy)
+        return get_autoregressor_model_fn(vocab_size, input_pipeline_copy.get_id_to_embedding_mapping())(features, labels, mode, params)
+
+    vocab_size = 8
+
+    params = {"learning_rate": 0.05, "number_of_alternatives": 1}
+    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir=TEST_TMP_DIR)
+    r = estimator.train(input_fn, max_steps=100)
+    r = estimator.predict(predict_input_fn)
+    output = [*islice(r, 2)]
+
+    for actual, expected in zip(output, expected_predictions):
+        relevant_length = len(expected)
+        assert actual["paths"][0][:relevant_length] == approx(np.array(expected[:relevant_length]))
+
+

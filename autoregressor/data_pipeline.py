@@ -101,8 +101,9 @@ class DataPipeline:
 
 
 class LmInputData(DataPipeline):
-    def __init__(self, vocab):
+    def __init__(self, vocab, batch_size=20):
         super(LmInputData, self).__init__()
+        self.batch_size = batch_size
         self._vocab_generalized = vocab_generalized = GeneralizedVocabulary(
                 vocab,
                 [
@@ -115,6 +116,12 @@ class LmInputData(DataPipeline):
         self.add_unit_transformation(vocab_generalized.vocab_id_to_generalized_id())
         self.add_structural_transformation(self.make_input_target_example)
         self.add_unit_transformation(vocab_generalized.generalized_id_to_extended_vector(), 0, "inputs")
+
+    def load_data(self, corpus):
+        corpus = self.transform_dataset(corpus)
+        corpus = self._padded_batch(corpus, self.batch_size)
+        corpus = corpus.map(lambda features, labels: self._fix_dimensions(features, labels, self.batch_size, self._vocab_generalized.vector_size()))
+        return corpus
 
     def make_input_target_example(self, sequence):
         """Transforms sequence into pair of input_sequnce and targets that can be used to learn language model.
@@ -134,7 +141,7 @@ class LmInputData(DataPipeline):
         features["length"] = length
         features["inputs"] = inputs
         labels["targets"] = sequence[1:]
-        return (features, labels)
+        return features, labels
 
     def _padded_batch(self, dataset, batch_size):
         def expand_length(features, labels):
@@ -145,8 +152,7 @@ class LmInputData(DataPipeline):
             features["length"] = tf.squeeze(features["length"], axis=[1])
             return features, labels
 
-        prepared_lm_data = language_model_input_dataset(dataset, embedding_lookup_fn)
-        length_expanded_data = prepared_lm_data.map(expand_length)
+        length_expanded_data = dataset.map(expand_length)
         length_expanded_data = length_expanded_data. \
             padded_batch(
             batch_size,
@@ -159,8 +165,10 @@ class LmInputData(DataPipeline):
         return length_expanded_data.map(flatten_length)
 
     def _fix_dimensions(self, features, labels, batch_size, vector_size):
-        features["inputs"] = tf.to_float(features["inputs"])
-        features["inputs"].set_shape((batch_size, None, 3))
+        features["inputs"].set_shape((batch_size, None, vector_size))
         features["length"].set_shape((batch_size,))
         labels["targets"].set_shape((batch_size, None))
         return features, labels
+    
+    def get_id_to_embedding_mapping(self):
+        return self._vocab_generalized.generalized_id_to_extended_vector()
