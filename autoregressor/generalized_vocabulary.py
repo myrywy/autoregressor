@@ -65,6 +65,9 @@ class GeneralizedVocabulary:
             return tf.concat((features_vector, embedding_vector), axis=1)
         return op
 
+    def vector_size(self):
+        return self._vocab.vector_size() + len(self._special_elements_order)
+
     def encode_features_op(self):
         special_element_ids = [self._special_elements[special_element_name] for special_element_name in
                                self._special_elements_order]
