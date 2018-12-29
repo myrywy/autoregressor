@@ -1,15 +1,83 @@
 from pathlib import Path
 import logging
+from functools import lru_cache
+from collections import defaultdict
 
 import numpy as np
 import tensorflow as tf
 
 from config import VOCABULARIES_BASE_DIR
+from vocabularies_preprocessing.vocabulary import Vocabulary
+from generalized_vocabulary import SpecialUnit
 
 VECORS_FILE_NAME = "vectors.npy"
 INDEX_FILE_NAME = "index.txt"
 EXCLUDED_ELEMENT_TEMPLATE = "<EXCLUDED_VOCABULARY_ELEMENT_{}>"
 UNKNOWN_ELEMENT_MARKER = "<UNKNOWN>"
+
+
+def get_default_base_dir():
+    return VOCABULARIES_BASE_DIR/"glove300"
+
+
+class Glove300():
+    def __init__(self, base_dir=get_default_base_dir()):
+        super(Glove300, self).__init__()
+        self._base_dir = Path(base_dir)
+        self._index_file_path = self._base_dir/INDEX_FILE_NAME
+        self._vectors_file_path = self._base_dir/VECORS_FILE_NAME
+        self._embedding_assigns = defaultdict(list)
+        
+
+    def initialize_embeddings_in_graph(self, graph, session):
+        vectors_path = str(self._vectors_file_path)
+        vectors = np.load(vectors_path)
+        for assign_op, placeholder in self._embedding_assigns[graph]:
+            session.run(assign_op, feed_dict={placeholder: vectors})
+
+    def word_to_id_op(self):
+        index_path = str(self._index_file_path)
+        index = tf.contrib.lookup.index_table_from_file(
+            vocabulary_file=index_path,
+            default_value=-1,
+        )
+        def op(word):
+            word = tf.convert_to_tensor(word, dtype=tf.string)
+            return index.lookup(word)
+        return op
+
+    def id_to_word_op(self):
+        index_path = str(self._index_file_path)
+        table = tf.contrib.lookup.index_to_string_table_from_file(
+            vocabulary_file=index_path, default_value=UNKNOWN_ELEMENT_MARKER)
+        return table.lookup
+
+    def id_to_vector_op(self):
+        embeddings = tf.Variable(tf.constant(0.0, shape=[self.vocab_size(), self.vector_size()]),
+                trainable=False, name="glove_embeddings")
+        embedding_placeholder = tf.placeholder(tf.float32, [self.vocab_size(), self.vector_size()])
+        self._embedding_assigns[tf.get_default_graph()].append((embeddings.assign(embedding_placeholder), embedding_placeholder))
+        def op(id):
+            return tf.nn.embedding_lookup(embeddings, id)
+        return op
+
+    def special_unit_to_id(self):
+        return None 
+        
+    def get_non_id_integer(self):
+        return 2196020
+
+    def get_valid_id_example(self):
+        return 1
+    
+    def vector_size(self):
+        return 300
+
+    @lru_cache()
+    def vocab_size(self):
+        index_path = str(self._index_file_path)
+        with open(index_path) as index_file:
+            return len([*index_file])
 
 
 def get_words_to_id_op():
