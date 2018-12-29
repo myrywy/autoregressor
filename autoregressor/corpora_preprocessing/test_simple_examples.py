@@ -1,5 +1,5 @@
-from corpora_preprocessing.simple_examples import text_dataset_to_token_ids, token_ids_to_text_dataset
-from vocabularies_preprocessing.glove300d import get_words_to_id_op, get_id_to_word_op
+from corpora_preprocessing.simple_examples import text_dataset_to_token_ids, token_ids_to_text_dataset, SimpleExamplesCorpus, DatasetType
+from vocabularies_preprocessing.glove300d import Glove300, get_words_to_id_op, get_id_to_word_op
 
 import tensorflow as tf
 import numpy as np
@@ -19,8 +19,9 @@ def get_test_dataset():
 
 
 def test_words_to_id_glove():
+    glove = Glove300()
     dataset = get_test_dataset()
-    dataset = text_dataset_to_token_ids(dataset, get_words_to_id_op)
+    dataset = text_dataset_to_token_ids(dataset, glove.word_to_id_op)
     it = dataset.make_initializable_iterator()
     next_element = it.get_next()
     with tf.Session() as sess:
@@ -35,9 +36,10 @@ def test_words_to_id_glove():
 
 
 def test_words_to_id_glove_estimator():
+    glove = Glove300()
     def get_input():
         dataset = get_test_dataset()
-        dataset = text_dataset_to_token_ids(dataset, get_words_to_id_op)
+        dataset = text_dataset_to_token_ids(dataset, glove.word_to_id_op)
         return dataset.batch(1)
 
     def mock_model_fn(features, labels, mode, params):
@@ -59,10 +61,11 @@ def test_words_to_id_glove_estimator():
     assert l3 == approx(np.array([85, 3972, 35185, 2545, 149, 2, 28428, 1630, 4575, 2377, 58, 106, 804, 12445, 216, 3644, 4, 970, 2, 1929, 8618, 7, 227, 5881, 3, 14521]))
 
 def test_two_way_words_id_transformation_glove_estimator():
+    glove = Glove300()
     def get_input():
         dataset = get_test_dataset()
-        dataset = text_dataset_to_token_ids(dataset, get_words_to_id_op)
-        dataset = token_ids_to_text_dataset(dataset, get_id_to_word_op)
+        dataset = text_dataset_to_token_ids(dataset, glove.word_to_id_op)
+        dataset = token_ids_to_text_dataset(dataset, glove.id_to_word_op)
         return dataset.batch(1)
 
     def mock_model_fn(features, labels, mode, params):
@@ -82,3 +85,49 @@ def test_two_way_words_id_transformation_glove_estimator():
     assert (l1 == s1.encode().split()).all()
     assert (l2 == s2.encode().split()).all()
     assert (l3 == s3.encode().split()).all()
+
+
+def test_get_tokens_dataset():
+    N = 3
+    expected_train_sentences = b"""aer banknote berlitz calloway centrust cluett fromstein gitano guterman hydro-quebec ipo kia memotec mlx nahb punts rake regatta rubens sim snack-food ssangyong swapo wachter
+pierre <unk> N years old will join the board as a nonexecutive director nov. N
+mr. <unk> is chairman of <unk> n.v. the dutch publishing group""".split(b"\n")
+    expected_train = [sentence.split(b" ") for sentence in expected_train_sentences]
+
+    expected_valid_sentences = b"""consumers may want to move their telephones a little closer to the tv set
+<unk> <unk> watching abc 's monday night football can now vote during <unk> for the greatest play in N years from among four or five <unk> <unk>
+two weeks ago viewers of several nbc <unk> consumer segments started calling a N number for advice on various <unk> issues""".split(b"\n")
+    expected_vaild = [sentence.split(b" ") for sentence in expected_valid_sentences]
+
+    expected_test_sentences = b"""no it was n't black monday
+but while the new york stock exchange did n't fall apart friday as the dow jones industrial average plunged N points most of it in the final hour it barely managed to stay this side of chaos
+some circuit breakers installed after the october N crash failed their first test traders say unable to cool the selling panic in both stocks and futures""".split(b"\n")
+    expected_test = [sentence.split(b" ") for sentence in expected_test_sentences]
+
+    simple_examples = SimpleExamplesCorpus()
+    train_dataset = simple_examples.get_tokens_dataset(DatasetType.TRAIN)
+    valid_dataset = simple_examples.get_tokens_dataset(DatasetType.VALID)
+    test_dataset = simple_examples.get_tokens_dataset(DatasetType.TEST)
+
+    train_it = train_dataset.make_one_shot_iterator()
+    valid_it = valid_dataset.make_one_shot_iterator()
+    test_it = test_dataset.make_one_shot_iterator()
+
+    train_next = train_it.get_next()
+    valid_next = valid_it.get_next()
+    test_next = test_it.get_next()
+
+    train_actual, valid_actual, test_actual = [], [], []
+
+    with tf.Session() as sess:
+        for _ in range(N):
+            train, valid, test = sess.run([train_next, valid_next, test_next])
+            train_actual.append(train)
+            valid_actual.append(valid)
+            test_actual.append(test)
+    
+
+    for (train, valid, test), (ex_train, ex_vaild, ex_test) in zip(zip(train_actual, valid_actual, test_actual), zip(expected_train, expected_vaild, expected_test)):
+        assert (train == np.array(ex_train)).all()
+        assert (valid == np.array(ex_vaild)).all()
+        assert (test == np.array(ex_test)).all()

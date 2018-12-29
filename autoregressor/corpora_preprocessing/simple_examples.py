@@ -78,3 +78,32 @@ def token_ids_to_text_dataset(dataset, get_id_to_words_fn):
     lookup = get_id_to_words_fn()
     dataset = dataset.map(lambda strings: lookup(strings))
     return dataset
+
+class DatasetType:
+    TRAIN = "train"
+    VALID = "valid"
+    TEST = "test"
+
+
+class SimpleExamplesCorpus:
+    def __init__(self, root_path=get_corpus_base_dir()):
+            self._root_path = Path(root_path)
+
+    def get_tokens_dataset(self, subset):
+        file_path = str(self._get_file_path(subset))
+        dataset = tf.data.TextLineDataset([file_path])
+        dataset = dataset.map(lambda string: tf.string_split([string]).values)
+        return dataset
+
+    def _get_file_path(self, subset):
+        if subset == DatasetType.TRAIN:
+            return self._root_path/"raw"/"ptb.train.txt"
+        if subset == DatasetType.VALID:
+            return self._root_path/"raw"/"ptb.valid.txt"
+        if subset == DatasetType.TEST:
+            return self._root_path/"raw"/"ptb.test.txt"
+        else:
+            raise ValueError("Invalid corpus subset type: {}".format(subset))
+
+
+    
