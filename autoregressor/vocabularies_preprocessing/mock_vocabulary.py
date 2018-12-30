@@ -55,5 +55,7 @@ class MockVocab(Vocabulary):
     def vector_size(self):
         return 3
 
+    def vocab_size(self):
+        return 4
 
     

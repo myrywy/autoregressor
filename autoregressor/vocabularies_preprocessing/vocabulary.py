@@ -142,4 +142,13 @@ class Vocabulary(ABC):
         """
         pass
 
+    @abstractmethod
+    def vocab_size(self):
+        """Return size of vocabulary - i.e. how many indices there are in the vocabulary or equivalently, how many embedding vectors there are in vocabulary
+
+        Returns:
+            int: number of items in the vocabulary
+        """ 
+        pass
+
 
