@@ -27,12 +27,17 @@ class Glove300(Vocabulary):
         self._index_file_path = self._base_dir/INDEX_FILE_NAME
         self._vectors_file_path = self._base_dir/VECORS_FILE_NAME
         self._embedding_assigns = defaultdict(list)
-        
+        self._embedding_variables = {}
 
     def initialize_embeddings_in_graph(self, graph, session):
+        print("initialize_embeddings_in_graph")
+        print("graph:", graph)
+        print("session", session)
         vectors_path = str(self._vectors_file_path)
         vectors = np.load(vectors_path)
         for assign_op, placeholder in self._embedding_assigns[graph]:
+            print("assign_op:", assign_op)
+            print("placeholder:", placeholder)
             session.run(assign_op, feed_dict={placeholder: vectors})
 
     def word_to_id_op(self):
@@ -53,13 +58,26 @@ class Glove300(Vocabulary):
         return table.lookup
 
     def id_to_vector_op(self):
-        embeddings = tf.Variable(tf.constant(0.0, shape=[self.vocab_size(), self.vector_size()]),
-                trainable=False, name="glove_embeddings")
-        embedding_placeholder = tf.placeholder(tf.float32, [self.vocab_size(), self.vector_size()])
-        self._embedding_assigns[tf.get_default_graph()].append((embeddings.assign(embedding_placeholder), embedding_placeholder))
+        print("id_to_vector_op")
+        print("graph:", tf.get_default_graph())
+        embeddings = self._get_embeddings_variable(tf.get_default_graph())
         def op(id):
-            return tf.nn.embedding_lookup(embeddings, id)
+            with tf.device("/device:CPU:0"):
+                return tf.nn.embedding_lookup(embeddings, id)
         return op
+    
+    def _get_embeddings_variable(self, graph):
+        try:
+            return self._embedding_variables[graph]
+        except KeyError:
+            with tf.device("/device:CPU:0"):
+                embeddings = tf.Variable(tf.constant(0.0, shape=[self.vocab_size(), self.vector_size()]),
+                    trainable=False, name="glove_embeddings")
+                embedding_placeholder = tf.placeholder(tf.float32, [self.vocab_size(), self.vector_size()])
+                self._embedding_assigns[tf.get_default_graph()].append((embeddings.assign(embedding_placeholder), embedding_placeholder))
+                self._embedding_variables[graph] = embeddings
+                return embeddings
+        
 
     def special_unit_to_id(self, special_unit_name):
         return None 
