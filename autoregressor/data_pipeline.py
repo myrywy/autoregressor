@@ -102,6 +102,13 @@ class DataPipeline:
 
 class LmInputData(DataPipeline):
     def __init__(self, vocab, batch_size=20):
+        """Creates preprocessing pipeline that converts token-based dataset into a dataset suitable for LanguageModel training.
+        Input dataset examples should be 1D string tensor representing sentence (each element of such tensor is one word/token).
+
+        Args:
+            vocab (Vocabulary): vocabulary that will be used to convert tokens into 
+            batch_size (int or None): size of batch created by load_data or None - then no batching will be performed
+        """
         super(LmInputData, self).__init__()
         self.batch_size = batch_size
         self._vocab_generalized = vocab_generalized = GeneralizedVocabulary(
@@ -118,9 +125,29 @@ class LmInputData(DataPipeline):
         self.add_unit_transformation(vocab_generalized.generalized_id_to_extended_vector(), 0, "inputs")
 
     def load_data(self, corpus):
+        """Transforms dataset of string tensors into dataset with (features, labels) pair of a following structure:
+        If self.batch_size is None
+            features:
+                {"inputs": <tensor size (sentence_length, embedding_vector_size) dtype float32>, "length": <tensor scalar of type int>}
+            labels:
+                {"targets": <tensor size (sentence_length,) dtype int32>}
+        If self.batch_size is not None
+            features:
+                {"inputs": <tensor size (self.batch_size, sentence_length, embedding_vector_size) dtype float32>, "length": <tensor size (self.batch_size) type int>}
+            labels:
+                {"targets": <tensor size (self.batch_size, sentence_length,) dtype int32>}
+
+        Args:
+            corpus (tf.data.Dataset): dataset in which examples should be 1D string tensor representing sentence (each element of such tensor is one word/token). 
+        """
         corpus = self.transform_dataset(corpus)
-        corpus = self._padded_batch(corpus, self.batch_size)
-        corpus = corpus.map(lambda features, labels: self._fix_dimensions(features, labels, self.batch_size, self._vocab_generalized.vector_size()))
+        if self.batch_size is not None:
+            corpus = self.padded_batch(corpus, self.batch_size)
+        return corpus
+
+    def padded_batch(self, corpus, batch_size):
+        corpus = self._padded_batch(corpus, batch_size)
+        corpus = corpus.map(lambda features, labels: self._fix_dimensions(features, labels, batch_size, self._vocab_generalized.vector_size()))
         return corpus
 
     def make_input_target_example(self, sequence):
@@ -165,6 +192,7 @@ class LmInputData(DataPipeline):
         return length_expanded_data.map(flatten_length)
 
     def _fix_dimensions(self, features, labels, batch_size, vector_size):
+        """After _padded_batch is performed, some dimesions of tensors are unknown so they have to be fixed "manually" to prevent som errors when using these tensors."""
         features["inputs"].set_shape((batch_size, None, vector_size))
         features["length"].set_shape((batch_size,))
         labels["targets"].set_shape((batch_size, None))
