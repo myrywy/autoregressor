@@ -1,4 +1,4 @@
-from data_pipeline import LmInputData
+from lm_input_data_pipeline import LmInputDataPipeline
 from vocabularies_preprocessing.mock_vocabulary import MockVocab
 from generalized_vocabulary import GeneralizedVocabulary
 from test_lstm_model.lstm_lm import get_autoregressor_model_fn
@@ -101,7 +101,7 @@ def test_in_out():
     )
 
     vocab = MockVocab()
-    input_pipeline = LmInputData(vocab)
+    input_pipeline = LmInputDataPipeline(vocab)
     input_data = input_pipeline.transform_dataset(input_dataset)
 
     it = input_data.make_initializable_iterator()
@@ -203,7 +203,7 @@ def test_in_out_with_estimator():
 
     def input_fn():
         vocab = MockVocab()
-        input_pipeline = LmInputData(vocab)
+        input_pipeline = LmInputDataPipeline(vocab)
         input_dataset = tf.data.Dataset.from_generator(
             input_generator,
             output_types=tf.string
@@ -247,7 +247,7 @@ def test_in_lm_learning():
 
     def input_fn():
         vocab = MockVocab()
-        input_pipeline = LmInputData(vocab, batch_size=3)
+        input_pipeline = LmInputDataPipeline(vocab, batch_size=3)
         input_dataset = tf.data.Dataset.from_generator(
             input_generator,
             output_types=tf.string
@@ -268,7 +268,7 @@ def test_in_lm_learning():
 
     def model_fn(features, labels, mode, params):
         vocab_copy = MockVocab()
-        input_pipeline_copy = LmInputData(vocab_copy)
+        input_pipeline_copy = LmInputDataPipeline(vocab_copy)
         return get_autoregressor_model_fn(vocab_size, input_pipeline_copy.get_id_to_embedding_mapping())(features, labels, mode, params)
 
     vocab_size = 8
@@ -297,7 +297,7 @@ def test_in_lm_learning_with_batching_afterwards():
 
     def input_fn():
         vocab = MockVocab()
-        input_pipeline = LmInputData(vocab, batch_size=None)
+        input_pipeline = LmInputDataPipeline(vocab, batch_size=None)
         input_dataset = tf.data.Dataset.from_generator(
             input_generator,
             output_types=tf.string
@@ -320,7 +320,7 @@ def test_in_lm_learning_with_batching_afterwards():
 
     def model_fn(features, labels, mode, params):
         vocab_copy = MockVocab()
-        input_pipeline_copy = LmInputData(vocab_copy)
+        input_pipeline_copy = LmInputDataPipeline(vocab_copy)
         return get_autoregressor_model_fn(vocab_size, input_pipeline_copy.get_id_to_embedding_mapping())(features, labels, mode, params)
 
     vocab_size = 8
@@ -374,7 +374,7 @@ def test_load_with_batching():
     )
 
     vocab = MockVocab()
-    input_pipeline = LmInputData(vocab, batch_size=2)
+    input_pipeline = LmInputDataPipeline(vocab, batch_size=2)
     input_data = input_pipeline.load_data(input_dataset)
 
     it = input_data.make_initializable_iterator()
@@ -434,7 +434,7 @@ def test_load_no_batching():
     )
 
     vocab = MockVocab()
-    input_pipeline = LmInputData(vocab, batch_size=None)
+    input_pipeline = LmInputDataPipeline(vocab, batch_size=None)
     input_data = input_pipeline.load_data(input_dataset)
 
     it = input_data.make_initializable_iterator()
@@ -488,7 +488,7 @@ def test_padded_batch_called_externally():
     )
 
     vocab = MockVocab()
-    input_pipeline = LmInputData(vocab, batch_size=None)
+    input_pipeline = LmInputDataPipeline(vocab, batch_size=None)
     input_data = input_pipeline.load_data(input_dataset)
     input_data = input_data.repeat(2)
     input_data = input_pipeline.padded_batch(input_data,2)
