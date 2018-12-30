@@ -20,7 +20,7 @@ def get_default_base_dir():
     return VOCABULARIES_BASE_DIR/"glove300"
 
 
-class Glove300():
+class Glove300(Vocabulary):
     def __init__(self, base_dir=get_default_base_dir()):
         super(Glove300, self).__init__()
         self._base_dir = Path(base_dir)
@@ -61,7 +61,7 @@ class Glove300():
             return tf.nn.embedding_lookup(embeddings, id)
         return op
 
-    def special_unit_to_id(self):
+    def special_unit_to_id(self, special_unit_name):
         return None 
         
     def get_non_id_integer(self):
