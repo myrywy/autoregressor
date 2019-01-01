@@ -383,6 +383,97 @@ def test_get_autoregressor_model_fn(
     "prediction_steps, "
     "alternative_paths, "
     "expected_paths, "
+    "predictions_mask",
+    [
+        (make_test_example_2_first_elements_known, 1, 2, 3, 1,
+            [
+                [
+                    [1,5,6,7,2,0],
+                ], [
+                    [1,7,6,5,2,0],
+                ], [
+                    [1,6,6,7,5,2]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,1,0],
+                ], [
+                    [1,1,1,1,1,0],
+                ], [
+                    [1,1,1,1,1,1]
+                ]
+            ]
+        ), 
+        (make_test_example_2_first_elements_known, 3, 2, 3, 1,
+            [
+                [
+                    [1,5,6,7,2,0],
+                ], [
+                    [1,7,6,5,2,0],
+                ], [
+                    [1,6,6,7,5,2]
+                ]
+            ],
+            [
+                [
+                    [1,1,1,1,1,0],
+                ], [
+                    [1,1,1,1,1,0],
+                ], [
+                    [1,1,1,1,1,1]
+                ]
+            ]
+        ), 
+    ]
+)
+def test_get_autoregressor_model_fn_with_time_major_optimization(
+    input_data, 
+    embedding_lookup_fn,
+    make_example_fn, 
+    batch_size, 
+    inputs_length,
+    prediction_steps,
+    alternative_paths,
+    expected_paths,
+    predictions_mask):
+    try:
+        shutil.rmtree(TEST_TMP_DIR)
+    except FileNotFoundError:
+        pass
+    def get_input():
+        dataset = input_data()
+        dataset = dataset.map(force_float_embeddings)
+        return dataset.map(lambda f, l: fix_dimensions(f, l, 20))
+
+    params = {"learning_rate": 0.0005, "number_of_alternatives": alternative_paths}
+
+    model_fn = get_autoregressor_model_fn(8, id_to_embedding_mapping=lambda x: tf.to_float(embedding_lookup_fn(x)), time_major_optimization=True)
+
+    estimator = tf.estimator.Estimator(model_fn, params=params, model_dir=TEST_TMP_DIR)
+    for _ in range(3):
+        estimator.train(lambda: get_input(), steps=100)
+        eval_result = estimator.evaluate(get_input, steps=3)
+        print("Eval results")
+        print(eval_result)
+
+
+    predictions = estimator.predict(get_test_input_fn(make_example_fn, batch_size, inputs_length))
+    predictions = [*itertools.islice(predictions, prediction_steps)]
+    predictions_stacked = np.stack([o["paths"] for o in predictions])
+    
+    predictions_stacked *= predictions_mask # because this elements are after the real last element so we don't care (there was no such cases in examples in dataset )
+    
+    assert predictions_stacked == approx(np.array(expected_paths))
+
+
+@pytest.mark.parametrize(
+    "make_example_fn, "
+    "batch_size, "
+    "inputs_length, "
+    "prediction_steps, "
+    "alternative_paths, "
+    "expected_paths, "
     "predictions_mask, "
     "allowables",
     [

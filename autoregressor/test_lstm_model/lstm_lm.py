@@ -119,7 +119,7 @@ def get_language_model_fn(vocab_size):
     return language_model_fn
 
 
-def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping, mask_allowables=None):
+def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping, mask_allowables=None, time_major_optimization=False):
     def autoregressor_model_fn(features, labels, mode, params):
         # Args:
         #
@@ -161,8 +161,11 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping, mask_allowab
         else:
             sentence, length = features["inputs"], features["length"]
             targets = labels["targets"]
-            logits, state = tf.nn.dynamic_rnn(predictor, sentence, sequence_length=length, dtype=tf.float32)
-            probabilities = tf.nn.softmax(logits=logits)
+            if time_major_optimization:
+                sentence = tf.transpose(sentence, (1,0,2))
+                targets = tf.transpose(targets, (1,0))
+            logits, state = tf.nn.dynamic_rnn(predictor, sentence, sequence_length=length, dtype=tf.float32, time_major=time_major_optimization)
+            
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
                                                                         logits=logits)
 
@@ -173,6 +176,7 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping, mask_allowab
             train_op = optimizer.minimize(
                 loss=loss, global_step=tf.train.get_global_step())
 
+            probabilities = tf.nn.softmax(logits=logits)
             predicted_word = tf.argmax(probabilities, 2)
 
             metrics = {
