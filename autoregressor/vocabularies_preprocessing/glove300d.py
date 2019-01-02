@@ -21,13 +21,14 @@ def get_default_base_dir():
 
 
 class Glove300(Vocabulary):
-    def __init__(self, base_dir=get_default_base_dir()):
+    def __init__(self, base_dir=get_default_base_dir(), dry_run=False):
         super(Glove300, self).__init__()
         self._base_dir = Path(base_dir)
         self._index_file_path = self._base_dir/INDEX_FILE_NAME
         self._vectors_file_path = self._base_dir/VECORS_FILE_NAME
         self._embedding_assigns = defaultdict(list)
         self._embedding_variables = {}
+        self._dry_run = dry_run
 
     def initialize_embeddings_in_graph(self, graph, session):
         print("initialize_embeddings_in_graph")
@@ -67,6 +68,8 @@ class Glove300(Vocabulary):
         return op
     
     def _get_embeddings_variable(self, graph):
+        if self._dry_run:
+            return None
         try:
             return self._embedding_variables[graph]
         except KeyError:
