@@ -5,24 +5,38 @@ from layers_utils import AffineProjectionPseudoCell
 from autoregression_with_alternatives import AutoregressionWithAlternativePaths
 from element_probablity_mask import ElementProbabilityMasking
 
-NUM_UNITS = 30
+NUM_UNITS = 50
 NUM_LAYERS = 3
-VOCAB_SIZE = 2196027 # glove vocab size +10 (which is reserved for special id)
 
 
 class PredictNext(tf.nn.rnn_cell.RNNCell):
-    def __init__(self, n_units, n_layers, probability_distribution_size, dtype=tf.float32, **kwargs):
+    rnn_type_names = {
+        None: tf.nn.rnn_cell.LSTMCell,
+        "lstm": tf.nn.rnn_cell.LSTMCell,
+        "lstm_block_cell": tf.contrib.rnn.LSTMBlockCell,
+    }
+    def __init__(self, n_units, n_layers, probability_distribution_size, dtype=tf.float32, last_layer_num_units=None, rnn_cell_type=None, **kwargs):
         super(PredictNext, self).__init__(dtype=dtype, **kwargs)
         self.probability_distribution_size = probability_distribution_size
         self.n_units = n_units
         self.n_layers = n_layers
+        self.last_layer_n_units = last_layer_num_units
+        self.rnn_cell_type = PredictNext.rnn_type_names[rnn_cell_type]
 
         # alternatively this could be done via projection_num atgument of last LSTM cell
-        projection = AffineProjectionPseudoCell(self.n_units, self.probability_distribution_size, self.dtype)
 
-        self.rnn_cell = tf.nn.rnn_cell.MultiRNNCell(
-            [self._create_single_cell() for _ in range(self.n_layers)] + [projection],
-            state_is_tuple=True)
+        if self.last_layer_n_units is None:
+            projection = AffineProjectionPseudoCell(self.n_units, self.probability_distribution_size, self.dtype)
+            self.rnn_cell = tf.nn.rnn_cell.MultiRNNCell(
+                [self._create_single_cell() for _ in range(self.n_layers)] + [projection],
+                state_is_tuple=True)
+        else:
+            projection = AffineProjectionPseudoCell(self.last_layer_n_units, self.probability_distribution_size, self.dtype)
+            self.rnn_cell = tf.nn.rnn_cell.MultiRNNCell(
+                [self._create_single_cell() for _ in range(self.n_layers-1)] + 
+                [self._create_last_cell()] + 
+                [projection],
+                state_is_tuple=True)
         
     
     def call(self, input, state):
@@ -35,7 +49,10 @@ class PredictNext(tf.nn.rnn_cell.RNNCell):
         return output, new_state
 
     def _create_single_cell(self):
-        return tf.nn.rnn_cell.LSTMCell(self.n_units, state_is_tuple=True)
+        return self.rnn_cell_type(self.n_units)
+
+    def _create_last_cell(self):
+        return self.rnn_cell_type(self.last_layer_n_units)
 
     @property
     def state_size(self):
@@ -119,7 +136,12 @@ def get_language_model_fn(vocab_size):
     return language_model_fn
 
 
-def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping, mask_allowables=None, time_major_optimization=False):
+def get_autoregressor_model_fn(
+    vocab_size, 
+    id_to_embedding_mapping, 
+    mask_allowables=None, 
+    time_major_optimization=False,
+    hparams=None):
     def autoregressor_model_fn(features, labels, mode, params):
         # Args:
         #
@@ -128,7 +150,17 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping, mask_allowab
         # mode:     Either TRAIN, EVAL, or PREDICT
         # params:   User-defined hyper-parameters, currently `learning_rate` only.
 
-        predictor = PredictNext(NUM_UNITS, NUM_LAYERS, vocab_size)
+        if hparams is not None:
+            num_units = hparams.rnn_num_units
+            num_layers = hparams.rnn_num_layers
+            last_layer_num_units = hparams.rnn_last_layer_num_units
+            predictor = PredictNext(num_units, num_layers, vocab_size, last_layer_num_units=last_layer_num_units, rnn_cell_type=hparams.rnn_layer)
+        else:
+            num_units = NUM_UNITS
+            num_layers = NUM_LAYERS
+            last_layer_num_units = None
+            predictor = PredictNext(num_units, num_layers, vocab_size, last_layer_num_units=last_layer_num_units)
+
         if mode == tf.estimator.ModeKeys.PREDICT:
             initial_inputs = features["inputs"] # expect tensor of a shape [batch_size] with first elemetns
             length = features["length"] # expect tensor of a shape [batch_size] with number of elements to generate
@@ -164,7 +196,11 @@ def get_autoregressor_model_fn(vocab_size, id_to_embedding_mapping, mask_allowab
             if time_major_optimization:
                 sentence = tf.transpose(sentence, (1,0,2))
                 targets = tf.transpose(targets, (1,0))
-            logits, state = tf.nn.dynamic_rnn(predictor, sentence, sequence_length=length, dtype=tf.float32, time_major=time_major_optimization)
+            logits, state = tf.nn.dynamic_rnn(predictor, sentence, 
+                sequence_length=length, 
+                dtype=tf.float32, 
+                time_major=time_major_optimization,
+                swap_memory=True)
             
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
                                                                         logits=logits)
