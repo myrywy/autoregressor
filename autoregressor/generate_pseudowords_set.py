@@ -1,76 +1,145 @@
+from itertools import chain
+from pathlib import Path
+import logging
+import argparse
+
 import numpy as np
 
 
-source_corpus_iterable = ["a", "b", "c", "d", "e", "f", "g", "h"]
-#source_corpus_iterable = ["a", "b", "c",]
-def generate_pseudowords_set(source_corpus_iterable):
-    words = set(source_corpus_iterable)
-    n_uniq_words = len(words)
-    proportions = [0.8, 0.1, 0.1]
-
-    denominator = sum(c_i * i for i, c_i in enumerate(proportions, 1))
-
-    counts_of_pseudowords = np.array(proportions) * n_uniq_words / denominator # [p * n_uniq_words /  denominator for p in proportions]
-
-    print(counts_of_pseudowords)
-    print(counts_of_pseudowords/sum(counts_of_pseudowords))
-
-    def some_accidental_home_brewed_elections_algorithm_that_I_should_probably_remove(counts_before_rounding):
-        desired_total = np.round(sum(counts_before_rounding))
-        counts = [int(c) for c in counts_before_rounding]
-        remainder = desired_total - sum(counts)
-        while remainder > 0:
-            remainder = desired_total - sum(counts)
-            underrepresented = [c < p for c, p in zip(counts, counts_before_rounding)]
-            for i, is_under in enumerate(underrepresented):
-                if is_under:
-                    counts[i] += 1
-                    remainder -= 1
-                if remainder == 0:
-                    break
-            
-        print("counts", counts)
-        print("sum(counts)", sum(counts))
-        print("n_uniq_words", desired_total)
-
-        return counts
+def prepare_pseudowords_experiment_data(input_file_paths, output_directory, words_ambiguity_proportions):
+    """Ouput files will be named the same as input files => output direcory should not contain input files."""
+    output_directory = Path(output_directory)
+    corpora = [get_corpus(input_file_path) for input_file_path in input_file_paths]
+    output_corpora, pseudo_voc = transform_corpora_with_common_pseudowords_set(corpora, words_ambiguity_proportions)
+    pseudo_voc.to_file(output_directory/"pseudo-words-vocabulary.txt")
+    for input_path, corpus in zip(input_file_paths, output_corpora):
+        name =  Path(input_path).name
+        output_path = output_directory/name
+        save_corpus(output_path, corpus)
 
 
-    counts_rounded = some_accidental_home_brewed_elections_algorithm_that_I_should_probably_remove(counts_of_pseudowords)
-    print(counts_rounded)
-    print(counts_rounded/sum(counts_of_pseudowords))
-    print(np.array(counts_rounded) * (np.array(range(len(counts_rounded)))+1))
-    print(sum(counts_rounded * np.arange(1,len(counts_rounded)+1)))
+def transform_corpora_with_common_pseudowords_set(corpora, words_ambiguity_proportions):
+    tokens_all = flatten(chain(*corpora))
+    pseudo_voc = PseudoWordsVocabulary.from_words(tokens_all, words_ambiguity_proportions)
+    return [pseudo_voc.transform_corpus(corpus) for corpus in corpora], pseudo_voc
 
-    words_bag = words.copy()
-    pseudowords = []
-    for n_meanings, count in enumerate(counts_rounded, 1):
-        pseudowords.append([])
-        for _ in range(count):
-            pseudoword_meanings = []
-            for _ in range(n_meanings):
-                random_meaning = list(words_bag)[np.random.randint(0, len(words_bag))]
-                pseudoword_meanings.append(random_meaning)
-                words_bag.remove(random_meaning)
-            pseudowords[-1].append(pseudoword_meanings)
 
-    print(pseudowords)
+class PseudoWordsVocabulary:
+    INTERNAL_SEPARATOR = "*"
 
-    words_to_pseudowords_mapping = {}
-
-    for n_meanings_pseudowords in pseudowords:
-        for pseudoword in n_meanings_pseudowords:
-            for word in pseudoword:
-                words_to_pseudowords_mapping[word] = pseudoword
+    def __init__(self):
+        self._mapping = None
     
-    return words_to_pseudowords_mapping
+    @staticmethod
+    def from_words(original_words, words_ambiguity_proportions):
+        """Create new pseudo-words vocabulary, see `generate_pseudowords_set` for more details"""
+        new = PseudoWordsVocabulary()
+        new._mapping = PseudoWordsVocabulary.generate_pseudowords_set(original_words, words_ambiguity_proportions)
+        return new
 
-input_corpus_files = [
-    "/mnt/storage/workspace_2/find_cheapest_path/autoregressor/data/simple_examples/raw/ptb.train.txt", 
-    "/mnt/storage/workspace_2/find_cheapest_path/autoregressor/data/simple_examples/raw/ptb.valid.txt", 
-    "/mnt/storage/workspace_2/find_cheapest_path/autoregressor/data/simple_examples/raw/ptb.test.txt",
-    ]
+    @staticmethod
+    def from_file(self, file_path):
+        mapping = {}
+        with open(file_path) as f:
+            for pseudoword in f:
+                pseudoword = pseudoword.strip()
+                original_words = pseudoword.split(PseudoWordsVocabulary.INTERNAL_SEPARATOR)
+                for word in original_words:
+                    mapping[word] = original_words
+        new = PseudoWordsVocabulary()
+        new._mapping = mapping
+    
+    def to_file(self, file_path):
+        separator = PseudoWordsVocabulary.INTERNAL_SEPARATOR
+        pseudowords_all = [separator.join(words) for words in self._mapping.values()]
+        pseudowords_all = set(pseudowords_all)
+        pseudowords_all = sorted(
+            pseudowords_all, 
+            key=lambda pseudoword: (-pseudoword.count(separator), pseudoword)
+            )
+        with open(file_path, "wt") as output_file:
+            for pseudoword in pseudowords_all:
+                print(pseudoword, file=output_file)
 
+    def transform_corpus(self, corpus):
+        """
+        Args:
+            corpus (Iterable[Iterable[str]]): inner Iterables represent sentences, str - words
+        """
+        for sentence in corpus:
+            new_sentnce = [PseudoWordsVocabulary.INTERNAL_SEPARATOR.join(self._mapping[word]) for word in sentence]
+            yield new_sentnce
+
+    @staticmethod
+    def generate_pseudowords_set(original_words, words_ambiguity_proportions):
+        """
+        Args:
+            original_words (Iterable[str]): words from which pseudo-words will be generated
+            words_ambiguity_proportions (List[float]): list of percentages of pseudowords of given number of meanings in the output set
+                Should sum up to 1. For example with words_ambiguity_proportions = [0.6, 0.3, 0.1] 60% of pseudo-words will have one meaning, 
+                30% will have two meanings and 10% will have 3 three meanings.
+        Returns:
+            dict: dictionary which keys are words from `original_words` and values are list of words that were merged into one pseudoword
+        """
+        words = set(original_words)
+        n_uniq_words = len(words)
+        denominator = sum(c_i * i for i, c_i in enumerate(words_ambiguity_proportions, 1))
+        counts_of_pseudowords = np.array(words_ambiguity_proportions) * n_uniq_words / denominator
+
+        counts_rounded = round_to_int_preserving_total(counts_of_pseudowords)
+
+        # It is preventing leaks of a word when counts_rounded sets of given cardinalities doesn't divide original set.
+        if sum(counts_rounded * np.arange(1, len(words_ambiguity_proportions)+1)) < n_uniq_words:
+            remainder = n_uniq_words - sum(counts_rounded * np.arange(1, len(words_ambiguity_proportions)+1))
+            counts_rounded[0] += remainder
+            logging.warn("Added {} one-meaning pseudowords.")
+
+        words_bag = words.copy()
+        pseudowords = []
+        for n_meanings, count in enumerate(counts_rounded, 1):
+            pseudowords.append([])
+            for _ in range(count):
+                pseudoword_meanings = []
+                for _ in range(n_meanings):
+                    random_meaning = list(words_bag)[np.random.randint(0, len(words_bag))]
+                    pseudoword_meanings.append(random_meaning)
+                    words_bag.remove(random_meaning)
+                pseudowords[-1].append(pseudoword_meanings)
+
+        words_to_pseudowords_mapping = {}
+
+        for n_meanings_pseudowords in pseudowords:
+            for pseudoword in n_meanings_pseudowords:
+                for word in pseudoword:
+                    words_to_pseudowords_mapping[word] = pseudoword
+        
+        return words_to_pseudowords_mapping
+
+
+def round_to_int_preserving_total(numbers_before_rounding):
+    """Rounds number in such a way that their sum should remain the same (if their sum is integer from the beginning).
+
+    Args:
+        numbers_before_rounding (Iterable[float]): flaots that are to be rounded to ints. Should all be >= 0.
+    Returns:
+        Iterable[int]: rounded numbers from numbers_before_rounding
+    """
+    desired_total = np.round(sum(numbers_before_rounding))
+    counts = [int(c) for c in numbers_before_rounding]
+    remainder = desired_total - sum(counts)
+    while remainder > 0:
+        remainder = desired_total - sum(counts)
+        underrepresented = [c < p for c, p in zip(counts, numbers_before_rounding)]
+        for i, is_under in enumerate(underrepresented):
+            if is_under:
+                counts[i] += 1
+                remainder -= 1
+            if remainder == 0:
+                break
+    return counts
+
+
+# TODO: Following functions maybe should be integrated in corpora classes
 def get_corpus(file):
     with open(file) as f:
         sentences = []
@@ -79,22 +148,7 @@ def get_corpus(file):
     return sentences
 
 def flatten(corpus):
-    return [word for sentence in corpus for word in sentence]
-
-train = get_corpus(input_corpus_files[0])
-valid = get_corpus(input_corpus_files[1])
-test = get_corpus(input_corpus_files[2])
-
-all_simple_examples = flatten(train + valid + test)
-
-words_to_pseudowords_mapping = generate_pseudowords_set(all_simple_examples)
-
-def transform_corpus(corpus, mapping):
-    new_corpus = []
-    for sentence in corpus:
-        new_sentnce = ["*".join(mapping[word]) for word in sentence]
-        new_corpus.append(new_sentnce)
-    return new_corpus
+    return (word for sentence in corpus for word in sentence)
 
 def save_corpus(path, corpus):
     with open(path, "wt") as file:
@@ -102,12 +156,12 @@ def save_corpus(path, corpus):
             print(" ".join(sentence), file=file)
 
 
-new_train = transform_corpus(train, words_to_pseudowords_mapping)
-save_corpus("ptb.pseudowords.train.txt", new_train)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("output_dir")
+    parser.add_argument("--input-files", nargs="*")
+    parser.add_argument("--ratios", nargs="*", type=float)
 
-new_valid = transform_corpus(valid, words_to_pseudowords_mapping)
-save_corpus("ptb.pseudowords.valid.txt", new_valid)
+    args = parser.parse_args()
 
-new_test = transform_corpus(test, words_to_pseudowords_mapping)
-save_corpus("ptb.pseudowords.test.txt", new_test)
-
+    prepare_pseudowords_experiment_data(args.input_files, args.output_dir, args.ratios)
