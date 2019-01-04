@@ -1,9 +1,25 @@
 from itertools import chain
 from pathlib import Path
+import datetime
 import logging
 import argparse
 
 import numpy as np
+
+
+def as_versioned_resource(output_directory_root, input_components, params):
+    output_root = Path(output_directory_root)
+    resource_name = "pseudowords-{}-{}".format("_".join(map(str, params)), datetime.date.today().strftime("%Y%m%d"))
+    output_dir = (output_root/resource_name)
+    output_dir.mkdir(parents=True)
+    with open(output_dir/"inputs.txt", "wt") as f:
+        for input in input_components:
+            print(input, file=f)
+    with open(output_dir/"params.txt", "wt") as f:
+        for param in params:
+            print(param, file=f)
+    return output_dir
+
 
 
 def prepare_pseudowords_experiment_data(input_file_paths, output_directory, words_ambiguity_proportions):
@@ -25,7 +41,8 @@ def transform_corpora_with_common_pseudowords_set(corpora, words_ambiguity_propo
 
 
 class PseudoWordsVocabulary:
-    INTERNAL_SEPARATOR = "*"
+    INTERNAL_SEPARATOR = "^"
+    ANNOTATION_SEPARATOR = "|"
 
     def __init__(self):
         self._mapping = None
@@ -61,13 +78,18 @@ class PseudoWordsVocabulary:
             for pseudoword in pseudowords_all:
                 print(pseudoword, file=output_file)
 
-    def transform_corpus(self, corpus):
+    def transform_corpus(self, corpus, annotate=True):
         """
         Args:
             corpus (Iterable[Iterable[str]]): inner Iterables represent sentences, str - words
         """
         for sentence in corpus:
-            new_sentnce = [PseudoWordsVocabulary.INTERNAL_SEPARATOR.join(self._mapping[word]) for word in sentence]
+            new_sentnce = []
+            for word in sentence:
+                new_word = self.INTERNAL_SEPARATOR.join(self._mapping[word])
+                if annotate:
+                    new_word = new_word + self.ANNOTATION_SEPARATOR + word
+                new_sentnce.append(new_word)
             yield new_sentnce
 
     @staticmethod
@@ -92,7 +114,7 @@ class PseudoWordsVocabulary:
         if sum(counts_rounded * np.arange(1, len(words_ambiguity_proportions)+1)) < n_uniq_words:
             remainder = n_uniq_words - sum(counts_rounded * np.arange(1, len(words_ambiguity_proportions)+1))
             counts_rounded[0] += remainder
-            logging.warn("Added {} one-meaning pseudowords.")
+            logging.warn("Added {} one-meaning pseudowords.".format(remainder))
 
         words_bag = words.copy()
         pseudowords = []
@@ -164,4 +186,5 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    prepare_pseudowords_experiment_data(args.input_files, args.output_dir, args.ratios)
+    outpur_dir = as_versioned_resource(args.output_dir, args.input_files, args.ratios)
+    prepare_pseudowords_experiment_data(args.input_files, outpur_dir, args.ratios)
