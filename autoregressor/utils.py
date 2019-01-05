@@ -76,3 +76,11 @@ def repeat_in_ith_dimension(tensor, i, k):
     multiplicity[i] = k
     return tf.tile(expanded, multiplicity)
 
+
+class without_context_manager:
+    def __enter__(self):
+        pass
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass
+without = without_context_manager()
