@@ -3,15 +3,17 @@ import re
 import argparse
 import datetime
 from pathlib import Path
-from itertools import count
+from itertools import count, repeat
+import contextlib
 
 import tensorflow as tf
 from pytest import approx
 
+from utils import without
 from vocabularies_preprocessing.glove300d import Glove300
 from corpora_preprocessing.simple_examples import SimpleExamplesCorpus, DatasetType
 from lm_input_data_pipeline import LmInputDataPipeline
-from test_lstm_model.lstm_lm import get_autoregressor_model_fn
+from lstm_lm import get_autoregressor_model_fn
 from hparams import hparams
 
 tf.logging.set_verbosity(tf.logging.DEBUG)
@@ -230,6 +232,8 @@ def device_assignment_function(node):
     return "/device:GPU:0"
 
 
+
+
 def train_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, hparams):
     glove = Glove300(dry_run=True)
     BATCH_SIZE = 5
@@ -247,15 +251,16 @@ def train_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, hparams):
         vocab_size = glove.vocab_size()
         embedding_size = input_pipe._vocab_generalized.vector_size()
         id_to_embeding_fn = input_pipe.get_id_to_embedding_mapping() if mode == tf.estimator.ModeKeys.PREDICT else lambda x: tf.zeros((tf.shape(x), embedding_size), tf.float32)
-        #with tf.device(device_assignment_function):
-        concrete_model_fn = get_autoregressor_model_fn(
-                vocab_size, id_to_embeding_fn, time_major_optimization=True, hparams=hparams)        #
-        estimator_spec = concrete_model_fn(features, labels, mode, params)          #
+        with tf.device(device_assignment_function) if params.size_based_device_assignment else without:
+            concrete_model_fn = get_autoregressor_model_fn(
+                    vocab_size, id_to_embeding_fn, time_major_optimization=True, hparams=hparams)
+            estimator_spec = concrete_model_fn(features, labels, mode, params)
         training_hooks = []
         if mode == tf.estimator.ModeKeys.PREDICT:
             training_hooks.append(InitializeVocabularyHook(glove))
-        #training_hooks.append(tf.train.ProfilerHook(output_dir=model_dir, save_secs=30, show_memory=True))
-        #training_hooks.append(FullLogHook())
+        if params.profiler:
+            training_hooks.append(tf.train.ProfilerHook(output_dir=model_dir, save_secs=30, show_memory=True))
+            training_hooks.append(FullLogHook())
         estimator_spec_with_hooks = tf.estimator.EstimatorSpec(
             mode=estimator_spec.mode,
             loss=estimator_spec.loss,

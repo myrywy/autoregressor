@@ -1,7 +1,7 @@
 from lm_input_data_pipeline import LmInputDataPipeline
 from vocabularies_preprocessing.mock_vocabulary import MockVocab
 from generalized_vocabulary import GeneralizedVocabulary
-from test_lstm_model.lstm_lm import get_autoregressor_model_fn
+from lstm_lm import get_autoregressor_model_fn
 from config import TEST_TMP_DIR
 
 import tensorflow as tf
