@@ -151,4 +151,12 @@ class Vocabulary(ABC):
         """ 
         pass
 
+    def after_session_created_hook_fn(self, session, graph=None):
+        """This function will be run after tf.Session is created and before ops created using Vocabulary are run.
+        Overwrite this function with all necessary initailizations.
+        Args:
+            session (tf.Session): created session
+            graph (tf.Graph): graph used in following evaluations. If None, then using default graphh may assumed."""
+        pass
+
 

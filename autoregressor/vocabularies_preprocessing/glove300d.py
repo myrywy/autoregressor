@@ -99,6 +99,11 @@ class Glove300(Vocabulary):
         index_path = str(self._index_file_path)
         with open(index_path) as index_file:
             return len([*index_file])
+    
+    def after_session_created_hook_fn(self, session, graph=None):
+        if graph is None:
+            graph = tf.get_default_graph()
+        self.initialize_embeddings_in_graph(graph, session)
 
 
 def get_words_to_id_op():
