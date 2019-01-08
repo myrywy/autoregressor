@@ -1,10 +1,45 @@
 from contextlib import contextmanager
+from functools import partial
 from itertools import count
 from pathlib import Path
 import logging
 import re
 
 import tensorflow as tf
+from lm_input_data_pipeline import LmInputDataPipeline
+
+
+class CachedLmInputDataPipeline(LmInputDataPipeline):
+    DEFAULT_EXAMPLES_PER_FILE = 2000
+    def __init__(self, vocab, data_dir, batch_size=20, examples_per_file=None, hparams=None):
+        super(CachedLmInputDataPipeline, self).__init__(vocab, batch_size)
+        self.data_dir = data_dir
+        # TODO: vvv refactor vvv
+        if examples_per_file:
+            self.examples_per_file = examples_per_file
+        elif hparams is not None:
+            try:
+                self.examples_per_file = hparams.number_of_cached_examples_in_one_file
+            except AttributeError:
+                self.examples_per_file = self.DEFAULT_EXAMPLES_PER_FILE
+        else:
+            self.examples_per_file
+        
+
+    def save_data(self, corpus, subset):
+        corpus = self.transform_dataset(corpus)
+        get_output_file_name_fn = partial(get_output_file_name, self.data_dir, subset)
+        writer_manager = EqualSizeRecordFilesWriter(self.examples_per_file, get_output_file_name_fn)
+        save_dataset_to_files(
+            corpus, 
+            make_tf_record_example, 
+            writer_manager, 
+            self.vocab.after_create_session_hook_fn)
+
+    def load_cached_data(self, subset):
+        return read_dataset_from_dir(self.data_dir, subset, self._vocab_generalized.vector_size())
+
+
 
 def read_dataset_from_dir(data_dir, only_named_subset, embedding_size):
     """
@@ -24,7 +59,6 @@ def list_dataset_files_in_directory(data_dir, only_named_subset=None):
         data_files = [file_path for file_path in data_files if file_path.name.split(".")[0] == only_named_subset]
     data_files = [str(file_path) for file_path in data_files]
     return data_files
-
 
 
 def read_dataset_from_files(input_paths, embedding_size):
