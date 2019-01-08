@@ -3,13 +3,15 @@ import re
 import argparse
 import datetime
 from pathlib import Path
-from itertools import count, repeat
+from itertools import count, repeat, islice
 import contextlib
 
 import tensorflow as tf
+import numpy as np
 from pytest import approx
 
 from utils import without
+from generalized_vocabulary import SpecialUnit
 from vocabularies_preprocessing.glove300d import Glove300
 from corpora_preprocessing.simple_examples import SimpleExamplesCorpus, DatasetType
 from lm_input_data_pipeline import LmInputDataPipeline
@@ -235,7 +237,7 @@ def device_assignment_function(node):
 
 
 def train_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, hparams):
-    glove = Glove300(dry_run=True)
+    glove = Glove300(dry_run=False)
     BATCH_SIZE = 5
 
     def create_input():
@@ -251,14 +253,22 @@ def train_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, hparams):
         vocab_size = glove.vocab_size()
         embedding_size = input_pipe._vocab_generalized.vector_size()
         id_to_embeding_fn = input_pipe.get_id_to_embedding_mapping() if mode == tf.estimator.ModeKeys.PREDICT else lambda x: tf.zeros((tf.shape(x), embedding_size), tf.float32)
-        with tf.device(device_assignment_function) if params.size_based_device_assignment else without:
+        with tf.device(device_assignment_function) if hparams.size_based_device_assignment else without:
             concrete_model_fn = get_autoregressor_model_fn(
                     vocab_size, id_to_embeding_fn, time_major_optimization=True, hparams=hparams)
             estimator_spec = concrete_model_fn(features, labels, mode, params)
+        if hparams.write_target_text_to_summary:
+            words_shape = tf.shape(labels["targets"])
+            to_vocab_id = input_pipe._vocab_generalized.generalized_id_to_vocab_id()
+            to_word = glove.id_to_word_op()
+            flat_targets = tf.reshape(labels["targets"], shape=[-1])
+            flat_targets_words = to_word(to_vocab_id(flat_targets))
+            targets_words = tf.reshape(flat_targets_words, shape=words_shape)
+            tf.summary.text("targets_words", targets_words)
         training_hooks = []
         if mode == tf.estimator.ModeKeys.PREDICT:
             training_hooks.append(InitializeVocabularyHook(glove))
-        if params.profiler:
+        if hparams.profiler:
             training_hooks.append(tf.train.ProfilerHook(output_dir=model_dir, save_secs=30, show_memory=True))
             training_hooks.append(FullLogHook())
         estimator_spec_with_hooks = tf.estimator.EstimatorSpec(
@@ -285,6 +295,216 @@ def train_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, hparams):
     print("duration:", t2-t1)
 
 
+
+def eval_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, subset, hparams, take_first_n=20):
+    glove = Glove300(dry_run=True)
+    BATCH_SIZE = 5
+
+    def create_input():
+        input_pipe = LmInputDataPipeline(glove, 5)
+        embedding_size = LmInputDataPipeline(glove, None)._vocab_generalized.vector_size()
+        train_data = read_dataset_from_dir(data_dir, subset, embedding_size)
+        if take_first_n is not None:
+            train_data = train_data.take(take_first_n)
+        train_data = input_pipe.padded_batch(train_data, BATCH_SIZE)
+        return train_data
+
+    def model_function(features, labels, mode, params):
+        input_pipe = LmInputDataPipeline(glove)
+        vocab_size = glove.vocab_size()
+        embedding_size = input_pipe._vocab_generalized.vector_size()
+        id_to_embeding_fn = input_pipe.get_id_to_embedding_mapping() if mode == tf.estimator.ModeKeys.PREDICT else lambda x: tf.zeros((tf.shape(x), embedding_size), tf.float32)
+        #with tf.device(device_assignment_function) if hparams.size_based_device_assignment else without:
+        with tf.device("/device:CPU:0"):
+            concrete_model_fn = get_autoregressor_model_fn(
+                    vocab_size, id_to_embeding_fn, time_major_optimization=True, predict_as_pure_lm=True, hparams=hparams)
+            estimator_spec = concrete_model_fn(features, labels, mode, params)
+        training_hooks = []
+        predictions = estimator_spec.predictions
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            training_hooks.append(InitializeVocabularyHook(glove))
+
+            predicted_ids = predictions["predicted_word_id"]
+            words_shape = tf.shape(predicted_ids)
+            to_vocab_id = input_pipe._vocab_generalized.generalized_id_to_vocab_id()
+            to_word = glove.id_to_word_op()
+            predicted_ids = tf.reshape(predicted_ids, shape=[-1])
+            predicted_words = to_word(to_vocab_id(predicted_ids))
+            predicted_words = tf.reshape(predicted_words, shape=words_shape)
+            predictions["predicted_word"] = predicted_words
+        if hparams.profiler:
+            training_hooks.append(tf.train.ProfilerHook(output_dir=model_dir, save_secs=30, show_memory=True))
+            training_hooks.append(FullLogHook())
+        estimator_spec_with_hooks = tf.estimator.EstimatorSpec(
+            mode=estimator_spec.mode,
+            loss=estimator_spec.loss,
+            train_op=estimator_spec.train_op,
+            eval_metric_ops=estimator_spec.eval_metric_ops,
+            predictions=estimator_spec.predictions,
+            training_hooks=training_hooks
+        )
+        return estimator_spec_with_hooks
+
+    params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 1}
+    #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
+    #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
+    config=tf.estimator.RunConfig()
+    estimator = tf.estimator.Estimator(
+        model_function, params=params, model_dir=model_dir, config=config)
+    t1 = datetime.datetime.now()
+    predictions = estimator.predict(create_input)
+    t2 = datetime.datetime.now()
+    predictions = islice(predictions, take_first_n)
+    for prediction in predictions:
+        print(prediction)
+    print("start:", t1)
+    print("stop:", t2)
+    print("duration:", t2-t1)
+
+
+
+def disambiguation_with_glove(input_sentence, model_dir, hparams):
+    """Input sentence is a list of lists of possible words at a given position"""
+    glove = Glove300()
+    BATCH_SIZE = 1
+
+
+    def create_input():
+        def data_gen():
+            yield ({"inputs": np.array(
+                            [[
+                                LmInputDataPipeline(glove, None)._vocab_generalized.get_special_unit_id(SpecialUnit.START_OF_SEQUENCE)
+                            ]],
+                            dtype=np.int32
+                            ), 
+                    "length": len(input_sentence)}, 
+                    np.array([0])
+                    )
+        
+        
+        data = tf.data.Dataset.from_generator(data_gen, 
+            output_types=({"inputs": tf.int32, "length": tf.int32},tf.int32),
+            output_shapes=({"inputs": (1,1,), "length": ()},(1,)))
+        return data
+
+    def model_function(features, labels, mode, params):
+        input_pipe = LmInputDataPipeline(glove)
+        vocab_size = glove.vocab_size()
+        embedding_size = input_pipe._vocab_generalized.vector_size()
+        id_to_embeding_fn = input_pipe.get_id_to_embedding_mapping() if mode == tf.estimator.ModeKeys.PREDICT else lambda x: tf.zeros((tf.shape(x), embedding_size), tf.float32)
+        #with tf.device(device_assignment_function) if hparams.size_based_device_assignment else without:
+        with tf.device("/device:CPU:0"):
+            concrete_model_fn = get_autoregressor_model_fn(
+                    vocab_size, 
+                    id_to_embeding_fn, 
+                    time_major_optimization=True, 
+                    predict_as_pure_lm=False, 
+                    mask_allowables=input_sentence,
+                    hparams=hparams)
+            estimator_spec = concrete_model_fn(features, labels, mode, params)
+        training_hooks = []
+        
+
+        
+        to_restore = tf.contrib.framework.get_variables_to_restore()
+        predictions = estimator_spec.predictions
+        if mode == tf.estimator.ModeKeys.PREDICT:
+            training_hooks.append(InitializeVocabularyHook(glove))
+
+
+            predicted_ids = tf.cast(predictions["paths"], dtype=tf.int64)
+            words_shape = tf.shape(predicted_ids)
+            to_vocab_id = input_pipe._vocab_generalized.generalized_id_to_vocab_id()
+            to_word = glove.id_to_word_op()
+            predicted_ids = tf.reshape(predicted_ids, shape=[-1])
+            predicted_words = to_word(to_vocab_id(predicted_ids))
+            predicted_words = tf.reshape(predicted_words, shape=words_shape)
+            predictions["predicted_words"] = predicted_words
+        if hparams.profiler:
+            training_hooks.append(tf.train.ProfilerHook(output_dir=model_dir, save_secs=30, show_memory=True))
+            training_hooks.append(FullLogHook())
+        estimator_spec_with_hooks = tf.estimator.EstimatorSpec(
+            mode=estimator_spec.mode,
+            loss=estimator_spec.loss,
+            train_op=estimator_spec.train_op,
+            eval_metric_ops=estimator_spec.eval_metric_ops,
+            predictions=estimator_spec.predictions,
+            training_hooks=training_hooks
+        )
+        return estimator_spec_with_hooks
+
+    params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 1}
+    #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
+    #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
+    config=tf.estimator.RunConfig()
+    estimator = tf.estimator.Estimator(
+        model_function, params=params, model_dir=model_dir, config=config)
+    t1 = datetime.datetime.now()
+    predictions = estimator.predict(create_input)
+    t2 = datetime.datetime.now()
+    predictions = islice(predictions, 1)
+    for prediction in predictions:
+        print(prediction)
+    print("start:", t1)
+    print("stop:", t2)
+    print("duration:", t2-t1)
+    return prediction
+
+
+def load_pseudowords_corpus(input_file_name, take_first_n=1):
+    sentences = []
+    with open(input_file_name) as f:
+        input_it = f if take_first_n is None else islice(f, take_first_n)
+        for sentence in input_it:
+            sentences.append(sentence.strip().split(" "))
+    inputs, references = [], []
+    for annotated_sentence in sentences:
+        input, reference = [], []
+        for annotated_word in annotated_sentence:
+            word, annotation = annotated_word.split("|")
+            input.append(word)
+            reference.append(annotation)
+        inputs.append(input)
+        references.append(reference)
+    return inputs, references
+
+def disambiguation_preprocessing(input_file_name):
+    inputs, references = load_pseudowords_corpus(input_file_name)
+    glove = Glove300()
+    input_pipe = LmInputDataPipeline(glove)
+    t_words = tf.placeholder(dtype=tf.string)
+    t_vocab_ids = glove.word_to_id_op()(t_words)
+    t_genralized_ids = input_pipe._vocab_generalized.vocab_id_to_generalized_id()(t_vocab_ids)
+
+    meanings_all = set()
+    for sentence in inputs:
+        for word in sentence:
+            for meaning in word.split("^"):
+                meanings_all.add(meaning)
+    meanings_all = list(meanings_all)
+
+    with tf.Session() as sess:
+        sess.run(tf.tables_initializer())
+        sess.run(tf.global_variables_initializer())
+        glove.after_session_created_hook_fn(sess)
+        ids_all = sess.run(t_genralized_ids, feed_dict={t_words: meanings_all})
+
+    mapping = {meaning: id for meaning, id in zip(meanings_all, ids_all)}
+
+    sentences_as_ids = []
+    for sentence in inputs:
+        sentence_as_ids = []
+        for word in sentence:
+            allowables = []
+            for meaning in word.split("^"):
+                allowables.append(mapping[meaning])
+            sentence_as_ids.append(allowables)
+        sentences_as_ids.append(sentence_as_ids)
+    
+    return sentences_as_ids
+            
+
+
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("mode")
@@ -305,5 +525,16 @@ if __name__ == "__main__":
             train_lm_on_cached_simple_examples_with_glove(args.cached_dataset_dir, args.model_dir, hparams)
     elif args.mode == "prepare":
         prepare_training_dataset(args.model_dir)
+    elif args.mode == "predict":
+        if args.hparams:
+            hparams.parse(args.hparams)
+        eval_lm_on_cached_simple_examples_with_glove(args.cached_dataset_dir, args.model_dir, "train", hparams)
+    elif args.mode == "disambiguate":
+        if args.hparams:
+            hparams.parse(args.hparams)
+        sentences_allowables = disambiguation_preprocessing("./data/simple_examples/check/pseudowords-0.8_0.2-20190106/ptb.check.txt")
+        print(sentences_allowables)
+        predictions = disambiguation_with_glove(sentences_allowables[0], args.model_dir, hparams)
+        print(predictions)
     else:
         print("wrong mode:", args.mode)

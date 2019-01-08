@@ -1,3 +1,5 @@
+import logging
+
 import tensorflow as tf
 
 def nested_tuple_apply(t, fn, *a, **k):
@@ -76,6 +78,21 @@ def repeat_in_ith_dimension(tensor, i, k):
     multiplicity[i] = k
     return tf.tile(expanded, multiplicity)
 
+
+def inject_hparams(target_object, hparams, properties):
+    for param_name in properties:
+        param_value = hparams[param_name]
+        setattr(target_object, param_name, param_value)
+
+def maybe_inject_hparams(target_object, hparams, properties):
+    for param_name in properties:
+        current_value = getattr(target_object, param_name, default=None)
+        if current_value is not None:
+            param_value = hparams[param_name]
+            logging.debug("Setting param {} = {} in {}".format(param_name, param_value, target_object))
+            setattr(target_object, param_name, param_value)
+        else:
+            logging.debug("Param already set, leaving as is: {} = {} in {}".format(param_name, param_value, target_object))
 
 class without_context_manager:
     def __enter__(self):
