@@ -4,6 +4,7 @@ import argparse
 import datetime
 from pathlib import Path
 from itertools import count, repeat, islice
+from collections import namedtuple
 import contextlib
 
 import tensorflow as tf
@@ -235,7 +236,7 @@ def device_assignment_function(node):
 
 
 
-
+CREATE_RTEST_INPUT = False
 def train_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, hparams):
     glove = Glove300(dry_run=False)
     BATCH_SIZE = 5
@@ -282,6 +283,21 @@ def train_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, hparams):
         return estimator_spec_with_hooks
 
     params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 1}
+    if CREATE_RTEST_INPUT:
+        dataset = create_input()
+        it = dataset.make_initializable_iterator()
+        next_example = it.get_next()
+        with tf.Session() as sess:
+            sess.run(tf.tables_initializer())
+            sess.run(tf.global_variables_initializer())
+            sess.run(it.initializer)
+            expected = []
+            for i in range(3000):
+                expected.append(sess.run(next_example))
+            with open("retest_expected.pickle", "wb") as rtest_expected:
+                import pickle
+                pickle.dump(expected, rtest_expected)
+        return
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
     config=tf.estimator.RunConfig()
@@ -433,7 +449,7 @@ def disambiguation_with_glove(input_sentence, model_dir, hparams):
         )
         return estimator_spec_with_hooks
 
-    params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 1}
+    params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 5}
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
     config=tf.estimator.RunConfig()
@@ -468,8 +484,59 @@ def load_pseudowords_corpus(input_file_name, take_first_n=1):
         references.append(reference)
     return inputs, references
 
-def disambiguation_preprocessing(input_file_name):
+WordDisambiguationResult = namedtuple("WordDisambiguationResult", ["input", "hypothesis", "reference"])
+SentenceDisambiguationResults = namedtuple("SentenceDisambiguationResults", ["words", "total", "ambiguous", "correct", "correct_ambiguous_only"])
+
+def disambiguation_check(input_file_name, model_dir, hparams):
     inputs, references = load_pseudowords_corpus(input_file_name)
+    allowables = disambiguation_preprocessing(inputs)
+    predictions = [disambiguation_with_glove(allowables[0], model_dir, hparams)]
+    results = []
+    for prediction, input, reference, allowable in zip(predictions,inputs,references,allowables):
+        result_sentence = []
+        correct_in_sentence = 0
+        correct_ambiguous_in_sentence = 0
+        total_in_sentence = len(input)
+        ambiguous_in_sentence = 0
+        for predicted_meaning, input_word, reference_meaning, possible_meanings_ids in zip(prediction["predicted_words"][0][1:], input, reference, allowable):
+            predicted_meaning = predicted_meaning.decode()
+            r = WordDisambiguationResult(input_word, predicted_meaning, reference_meaning)
+            result_sentence.append(r)
+            was_ambiguous = len(possible_meanings_ids) != 1
+            if was_ambiguous:
+                ambiguous_in_sentence += 1
+            if predicted_meaning == reference_meaning:
+                correct_in_sentence += 1
+                if was_ambiguous:
+                    correct_ambiguous_in_sentence += 1
+        sentence_results = SentenceDisambiguationResults(result_sentence, total_in_sentence, ambiguous_in_sentence, correct_in_sentence, correct_ambiguous_in_sentence)
+        results.append(sentence_results)
+    return results
+
+
+def print_disambiguation_results(disambituation_results):
+    OKGREEN = '\033[92m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    for sentence in disambituation_results:
+        print()
+        tokens = []
+        for word in sentence.words:
+            ok = "==" if word.hypothesis == word.reference else "!="
+            if word.hypothesis == word.reference:
+                if "^" in word.input:
+                    color = OKGREEN
+                else:
+                    color = ""
+            else:
+                color = FAIL
+            tokens.append("{}{}|H:{}{}R:{}{}".format(color, word.input, word.hypothesis, ok, word.reference,ENDC))
+        print("\n".join(tokens))
+        print()
+        print("total: {}\ncorrect rate: {}\ncorrect disambiguations rate: {}".format(sentence.total, sentence.correct/sentence.total, sentence.correct_ambiguous_only/sentence.ambiguous))
+
+
+def disambiguation_preprocessing(inputs):
     glove = Glove300()
     input_pipe = LmInputDataPipeline(glove)
     t_words = tf.placeholder(dtype=tf.string)
@@ -532,9 +599,14 @@ if __name__ == "__main__":
     elif args.mode == "disambiguate":
         if args.hparams:
             hparams.parse(args.hparams)
-        sentences_allowables = disambiguation_preprocessing("./data/simple_examples/check/pseudowords-0.8_0.2-20190106/ptb.check.txt")
-        print(sentences_allowables)
-        predictions = disambiguation_with_glove(sentences_allowables[0], args.model_dir, hparams)
-        print(predictions)
+        #sentences_allowables = disambiguation_preprocessing("./data/simple_examples/check/pseudowords-0.8_0.2-20190106/ptb.check.txt")
+        #print(sentences_allowables)
+        #predictions = disambiguation_with_glove(sentences_allowables[0], args.model_dir, hparams)
+        #print(predictions)
+        disambiguation_results = disambiguation_check(
+            "./data/simple_examples/check/pseudowords-0.8_0.2-20190106/ptb.check.txt", 
+            args.model_dir, 
+            hparams)
+        print_disambiguation_results(disambiguation_results)
     else:
         print("wrong mode:", args.mode)
