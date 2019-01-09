@@ -227,9 +227,11 @@ def get_autoregressor_model_fn(
         else:
             sentence, length = features["inputs"], features["length"]
             targets = labels["targets"]
+            cost_mask = tf.sequence_mask(length, tf.shape(targets)[1], tf.float32)
             if time_major_optimization:
                 sentence = tf.transpose(sentence, (1, 0, 2))
                 targets = tf.transpose(targets, (1, 0))
+                cost_mask = tf.transpose(cost_mask, (1, 0))
             logits, state = tf.nn.dynamic_rnn(predictor, sentence,
                                               sequence_length=length,
                                               dtype=tf.float32,
@@ -238,6 +240,9 @@ def get_autoregressor_model_fn(
 
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
                                                                            logits=logits)
+
+            if hparams.mask_padding_cost == True:
+                cross_entropy = cross_entropy * cost_mask
 
             loss = tf.reduce_mean(cross_entropy)
             optimizer = tf.train.AdamOptimizer(

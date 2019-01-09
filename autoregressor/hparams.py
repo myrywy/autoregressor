@@ -15,4 +15,5 @@ hparams = HParams(
     shuffle_examples_seed=0,
     cached_data_dir=None,
     write_target_text_to_summary=False,
+    mask_padding_cost=True,
 )
