@@ -1,3 +1,5 @@
+from functools import partial
+
 import tensorflow as tf 
 from tensorflow.contrib.training import HParams
 import numpy as np
@@ -125,3 +127,352 @@ def test_maybe_transpose_batch_time(hparams, time_major_optimization, inputs, ta
     
     assert r_inputs == approx(expected_inputs)
     assert (r_targets == expected_targets).all()
+
+
+@pytest.mark.parametrize("targets, logits, length, expected_cross_entropy",
+    [
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 1, 0, 0, 0],
+                    [ 0, 1, 0, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0, 0, 0, 1],
+                ],
+            ]),
+            np.array([2,2]),
+            np.array([
+                [1,1],
+                [1,1],
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 0.5, 0.5, 0, 0],
+                    [ 0, 0.6, 0.4, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0.7, 0, 0, 0.3],
+                ],
+            ]),
+            np.array([2,2]),
+            np.array([
+                [
+                    (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))),
+                    (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0)))
+                ],
+                [
+                    (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
+                    (-1) * np.log(np.exp(0.3)/(np.exp(0.7)+np.exp(0)+np.exp(0)+np.exp(0.3)))
+                ],
+            ])
+        ),
+    ]
+)
+def test_cross_entropy_fn__without_mask(hparams, targets, logits, length, expected_cross_entropy):
+    inputs = tf.constant([
+        [
+            [0.5,0.6],
+            [0.5,0.6],
+        ],
+        [
+            [0.5,0.6],
+            [0.5,0.6],
+        ]
+    ])
+    targets, logits, length = tf.convert_to_tensor(targets, dtype=tf.int32), tf.convert_to_tensor(logits, dtype=tf.float32), tf.convert_to_tensor(length)
+    hparams.set_hparam("mask_padding_cost", False)
+    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    t_cross_entropy = lm.cross_entropy_fn(targets, logits, length)
+    with tf.Session() as sess:
+        r_cross_entropy = sess.run(t_cross_entropy)
+    
+    assert r_cross_entropy == approx(expected_cross_entropy, abs=0.001)
+
+
+@pytest.mark.parametrize("targets, logits, length, expected_cross_entropy",
+    [
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 1, 0, 0, 0],
+                    [ 0, 1, 0, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0, 0, 0, 1],
+                ],
+            ]),
+            np.array([2,1]),
+            np.array([
+                [1,1],
+                [1,0],
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 1, 0, 0, 0],
+                    [ 0, 1, 0, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0, 0, 0, 1],
+                ],
+            ]),
+            np.array([1,2]),
+            np.array([
+                [1,0],
+                [1,1],
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 0.5, 0.5, 0, 0],
+                    [ 0, 0.6, 0.4, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0.7, 0, 0, 0.3],
+                ],
+            ]),
+            np.array([2,1]),
+            np.array([
+                [
+                    (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))),
+                    (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0)))
+                ],
+                [
+                    (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
+                    0
+                ],
+            ])
+        ),
+    ]
+)
+def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, length, expected_cross_entropy):
+    inputs = tf.constant([
+        [
+            [0.5,0.6],
+            [0.5,0.6],
+        ],
+        [
+            [0.5,0.6],
+            [0.5,0.6],
+        ]
+    ])
+    targets, logits, length = tf.convert_to_tensor(targets, dtype=tf.int32), tf.convert_to_tensor(logits, dtype=tf.float32), tf.convert_to_tensor(length)
+    hparams.set_hparam("mask_padding_cost", True)
+    hparams.set_hparam("time_major_optimization", False)
+    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    t_cross_entropy = lm.cross_entropy_fn(targets, logits, length)
+    with tf.Session() as sess:
+        r_cross_entropy = sess.run(t_cross_entropy)
+    
+    assert r_cross_entropy == approx(expected_cross_entropy, abs=0.001)
+
+
+
+@pytest.mark.parametrize("targets, logits, length, expected_cross_entropy",
+    [
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 1, 0, 0, 0],
+                    [ 0, 1, 0, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0, 0, 0, 1],
+                ],
+            ]),
+            np.array([2,1]),
+            np.array([
+                [1,1],
+                [1,0],
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 1, 0, 0, 0],
+                    [ 0, 1, 0, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0, 0, 0, 1],
+                ],
+            ]),
+            np.array([1,2]),
+            np.array([
+                [1,1],
+                [0,1],
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 0.5, 0.5, 0, 0],
+                    [ 0, 0.6, 0.4, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0.7, 0, 0, 0.3],
+                ],
+            ]),
+            np.array([2,1]),
+            np.array([
+                [
+                    (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))),
+                    (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0)))
+                ],
+                [
+                    (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
+                    0
+                ],
+            ])
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            # test case - logits 100% correct
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 0.5, 0.5, 0, 0],
+                    [ 0, 0.6, 0.4, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0.7, 0, 0, 0.3],
+                ],
+            ]),
+            np.array([1,2]),
+            np.array([
+                [
+                    (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))),
+                    (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0)))
+                ],
+                [
+                    0,
+                    (-1) * np.log(np.exp(0.3)/(np.exp(0.7)+np.exp(0)+np.exp(0)+np.exp(0.3))),
+                ],
+            ])
+        ),
+    ]
+)
+def test_cross_entropy_fn__with_mask_and_time_major(hparams, targets, logits, length, expected_cross_entropy):
+    inputs = tf.constant([
+        [
+            [0.5,0.6],
+            [0.5,0.6],
+        ],
+        [
+            [0.5,0.6],
+            [0.5,0.6],
+        ]
+    ])
+    targets, logits, length = tf.convert_to_tensor(targets, dtype=tf.int32), tf.convert_to_tensor(logits, dtype=tf.float32), tf.convert_to_tensor(length)
+    hparams.set_hparam("mask_padding_cost", True)
+    hparams.set_hparam("time_major_optimization", True)
+    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    t_cross_entropy = lm.cross_entropy_fn(targets, logits, length)
+    with tf.Session() as sess:
+        r_cross_entropy = sess.run(t_cross_entropy)
+    
+    assert r_cross_entropy == approx(expected_cross_entropy, abs=0.001)
+
+
+
+@pytest.mark.parametrize("lengths, max_length, time_major, expected_mask",
+    [
+        (
+            np.array([1,2,3]), 
+            3, 
+            False, 
+            np.array(
+                [
+                    [1,0,0],
+                    [1,1,0],
+                    [1,1,1],
+                ]
+            )
+        ),
+        (
+            np.array([1,2,3]), 
+            3, 
+            True, 
+            np.array(
+                [
+                    [1,1,1],
+                    [0,1,1],
+                    [0,0,1],
+                ]
+            )
+        ),
+    ]
+)
+def test_cost_mask(lengths, max_length, time_major, expected_mask):
+    lengths = tf.convert_to_tensor(lengths)
+    cost_mask_fn = partial(LanguageModel.cost_mask, LanguageModel)
+    t_mask = cost_mask_fn(lengths, max_length, time_major)
+
+    with tf.Session() as sess:
+        r_mask = sess.run(t_mask)
+
+    assert (r_mask == expected_mask).all()

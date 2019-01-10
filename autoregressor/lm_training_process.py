@@ -117,17 +117,11 @@ class LanguageModel:
         return tf.reduce_mean(cross_entropy)
     
     def cross_entropy_fn(self, targets, logits, lengths):
-        try:
-            cross_entropy = self.cross_entropy
-        except AttributeError:
-            cross_entropy = None
-        if cross_entropy is None:
-            cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
-                                                                            logits=logits)
-            if self.mask_padding_cost:
-                mask = self.cost_mask(targets, tf.shape(targets[1]), self.time_major_optimization)
-                cross_entropy = cross_entropy * mask
-            self.cross_entropy = cross_entropy
+        cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
+                                                                        logits=logits)
+        if self.mask_padding_cost:
+            mask = self.cost_mask(lengths, tf.shape(targets)[1], self.time_major_optimization)
+            cross_entropy = cross_entropy * mask
         return cross_entropy
 
     def cost_mask(self, lengths, max_length, time_major):
