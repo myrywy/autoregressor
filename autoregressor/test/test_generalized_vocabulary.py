@@ -33,6 +33,24 @@ def test_get_special_unit_id__complete_uniq(specials):
     assert len(specials) == len(ids)
 
 
+def test_generalized_id_to_token():
+    specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
+    vocab = MockVocab()
+    generalized = GeneralizedVocabulary(vocab, specials)
+    
+    ids = [0,1,2,4,5,6]
+    expected = [b"<<ZERO>>", b"<<START_OF_SEQUENCE>>", b"<<END_OF_SEQUENCE>>", b"a", b"b", b"c"]
+
+    tokens = generalized.generalized_id_to_token()(ids)
+
+    with tf.Session() as sess:
+        sess.run(tf.tables_initializer())
+        r_tokens = sess.run(tokens)
+
+    assert (r_tokens == expected).all()
+
+
+
 def test_get_special_unit_id__use_already_supported_ids():
     specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
     vocab = MockVocab()

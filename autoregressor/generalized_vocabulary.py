@@ -19,16 +19,17 @@ class GeneralizedVocabulary:
     def get_special_unit_id(self, special_unit_name):
         return self._special_elements[special_unit_name]
 
-    def generalized_id_to_token(self, ids):
+    def generalized_id_to_token(self):
         to_vocab_id = self.generalized_id_to_vocab_id()
         to_word = self._vocab.id_to_word_op()
-        specials_names = [special_unit_name for special_unit_name, special_unit_id in self._special_elements.items() if special_unit_id <= self._offset]
-        last_special_id = max(special_unit_id for _, special_unit_id in self._special_elements.items())
-        specials_names = ["<<ZERO>>"] + ["<<{}>>".format(name) for name, id in sorted(specials_names, key=lambda name, id: id)]
+        special_elements = sorted(self._special_elements.items(), key=lambda name_id: name_id[1])
+        specials_names = [special_unit_name for special_unit_name, special_unit_id in special_elements if special_unit_id <= self._offset]
+        last_special_id = max(special_unit_id for _, special_unit_id in special_elements if special_unit_id <= self._offset)
+        specials_names = ["<<ZERO>>"] + ["<<{}>>".format(name) for name in specials_names]
         def op(ids):
             ids = tf.convert_to_tensor(ids)
-            specials_names = tf.convert_to_tensor(specials_names, dtype=tf.string)
-            words_from_specials = tf.nn.embedding_lookup(specials_names, tf.max(ids, last_special_id))
+            specials_names_tensor = tf.convert_to_tensor(specials_names, dtype=tf.string)
+            words_from_specials = tf.nn.embedding_lookup(specials_names_tensor, tf.minimum(ids, last_special_id))
             vocab_ids = to_vocab_id(ids)
             words_from_vocab = to_word(vocab_ids)
             is_added_special = tf.less(ids, self._offset)
