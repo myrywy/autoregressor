@@ -1,22 +1,44 @@
-from lstm_lm import PredictNext
-
+import logging
 
 import tensorflow as tf
 
+from lstm_lm import PredictNext
+from utils import maybe_inject_hparams
+
 class LanguageModel:
     FLOAT_TYPE = tf.float32
-    def __init__(self, features, labels, mode, params):
-        self.time_major_optimization = NotImplemented
-        self.mask_padding_cost = NotImplemented
-        self.dynamic_rnn_swap_memory = NotImplemented
-        self.num_units = NotImplemented
-        self.num_layers = NotImplemented
-        self.vocab_size = NotImplemented
-        self.last_layer_num_units = NotImplemented
-        self.learning_rate = NotImplemented
-        self.predict_top_k = NotImplemented
-        self.words_as_text_preview = NotImplemented
-
+    def __init__(self, features, labels, mode, hparams):
+        self.hparams = hparams
+        
+        self.time_major_optimization = None
+        self.mask_padding_cost = None
+        self.dynamic_rnn_swap_memory = None
+        self.num_units = None
+        self.num_layers = None
+        self.vocab_size = None
+        self.last_layer_num_units = None
+        self.learning_rate = None
+        self.predict_top_k = None
+        self.words_as_text_preview = None
+        
+        maybe_inject_hparams(
+            self, 
+            hparams, 
+            [
+                "time_major_optimization", 
+                "mask_padding_cost", 
+                "dynamic_rnn_swap_memory",
+                "num_units",
+                "num_layers",
+                "vocab_size",
+                "last_layer_num_units",
+                "learning_rate",
+                "predict_top_k",
+                "words_as_text_preview"
+                ]
+            )
+        
+        # TODO: this should probably be factored out of this class
         self.vocabulary_generalized = None
 
         self.mode = mode
@@ -24,14 +46,15 @@ class LanguageModel:
         self.inputs, self.targets, self.lengths = self.unpack_nested_example(features, labels)
         self.inputs, self.targets = self.maybe_transpose_batch_time(self.inputs, self.targets)
 
+        self.graph_build = False
     
     def unpack_nested_example(self, features, labels):
         inputs = features["inputs"]
-        lengths = features["lengths"]
+        lengths = features["length"]
         targets = labels["targets"] if labels is not None else None
         return inputs, targets, lengths
 
-    def ____(self):
+    def build_graph(self):
         self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
         self.loss = self.loss_fn(self.logits, self.targets, self.lengths)
         self.predictions_ids, self.predictions = self.make_predictions(self.logits, self.targets)
@@ -44,6 +67,7 @@ class LanguageModel:
             tf.summary.scalar("mean_position_of_true_word", self.position_of_true_word)
             tf.summary.scalar("batch_perplexity", self.perplexity_from_loss(self.loss))
             self.set_metrics()
+        self.graph_build = True
 
     def perplexity_from_loss(self, loss):
         return tf.exp(loss)
@@ -74,11 +98,13 @@ class LanguageModel:
 
     def make_predictions(self, logits):
         top_predicted_words_ids = tf.nn.top_k(logits, self.predict_top_k)
-        if self.words_as_text_preview:
+        if self.words_as_text_preview and self.vocabulary_generalized is not None:
             original_shape = tf.shape(top_predicted_words_ids)
             flatten_top_predicted_words_ids = tf.reshape(top_predicted_words_ids, (-1,))
             flatten_top_predicted_words = self.vocabulary_generalized.generalized_id_to_token()(flatten_top_predicted_words_ids)
             top_predicted_words = tf.reshape(flatten_top_predicted_words, shape=original_shape)
+        elif self.words_as_text_preview:
+            logging.warning("Parameter words_as_text_preview evaluates to true but vocabulary_generalized is None. Skipping text preview.")
         else:
             top_predicted_words = None
         return top_predicted_words_ids, top_predicted_words
@@ -114,6 +140,7 @@ class LanguageModel:
         if self.time_major_optimization:
             inputs = tf.transpose(inputs, (1, 0, 2))
             targets = tf.transpose(targets, (1, 0))
+        return inputs, targets
 
     def unrolled_rnn(self, inputs, lengths):
         logits, state = tf.nn.dynamic_rnn(self.cell(), inputs,
@@ -125,7 +152,7 @@ class LanguageModel:
 
     def cell(self):
         cell = PredictNext(
-            self.num_units, self.num_layers, self.vocab_size, last_layer_num_units=self.last_layer_num_units)
+            self.num_units, self.num_layers, self.vocab_size, last_layer_num_units=self.last_layer_num_units, hparam=self.hparams)
         return cell
 
     def optimize(self, loss):
@@ -138,7 +165,15 @@ class LanguageModel:
         return train_op
 
     def estimator_spec(self):
-        return NotImplemented
+        if not self.graph_build:
+            self.build_graph()
+        return tf.estimator.EstimatorSpec(
+            self.mode,
+            predictions=self.predictions,
+            loss=self.loss,
+            train_op=self.train_op,
+            eval_metric_ops=self.metrics,
+        )
 
 
 class LanguageModelCallable:
