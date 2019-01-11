@@ -308,7 +308,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
 
 
 
-@pytest.mark.parametrize("targets, logits, length, expected_cross_entropy",
+@pytest.mark.parametrize("targets, logits, length, expected_cross_entropy, expected_loss",
     [
         (
             np.array([
@@ -331,7 +331,8 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
             np.array([
                 [1,1],
                 [1,0],
-            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
+            3/4 * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
         ),
         (
             np.array([
@@ -354,7 +355,8 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
             np.array([
                 [1,1],
                 [0,1],
-            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
+            3/4 * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
         ),
         (
             np.array([
@@ -383,7 +385,12 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                     (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
                     0
                 ],
-            ])
+            ]),
+            1/4 * ( 
+                (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))) + \
+                (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0))) + \
+                (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+            )
         ),
         (
             np.array([
@@ -412,11 +419,16 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                     0,
                     (-1) * np.log(np.exp(0.3)/(np.exp(0.7)+np.exp(0)+np.exp(0)+np.exp(0.3))),
                 ],
-            ])
+            ]),
+            1/4 * ( 
+                    (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))) + \
+                    (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0))) + \
+                    (-1) * np.log(np.exp(0.3)/(np.exp(0.7)+np.exp(0)+np.exp(0)+np.exp(0.3)))
+                )
         ),
     ]
 )
-def test_cross_entropy_fn__with_mask_and_time_major(hparams, targets, logits, length, expected_cross_entropy):
+def test_cross_entropy_fn__with_mask_and_time_major(hparams, targets, logits, length, expected_cross_entropy, expected_loss):
     inputs = tf.constant([
         [
             [0.5,0.6],
@@ -432,10 +444,12 @@ def test_cross_entropy_fn__with_mask_and_time_major(hparams, targets, logits, le
     hparams.set_hparam("time_major_optimization", True)
     lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
     t_cross_entropy = lm.cross_entropy_fn(targets, logits, length)
+    t_loss = lm.cross_entropy_based_loss(t_cross_entropy)
     with tf.Session() as sess:
-        r_cross_entropy = sess.run(t_cross_entropy)
+        r_cross_entropy, r_loss = sess.run([t_cross_entropy, t_loss])
     
     assert r_cross_entropy == approx(expected_cross_entropy, abs=0.001)
+    assert r_loss == approx(expected_loss, abs=0.001)
 
 
 
@@ -476,3 +490,4 @@ def test_cost_mask(lengths, max_length, time_major, expected_mask):
         r_mask = sess.run(t_mask)
 
     assert (r_mask == expected_mask).all()
+
