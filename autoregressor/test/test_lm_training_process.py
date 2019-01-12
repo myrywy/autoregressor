@@ -4,10 +4,14 @@ import tensorflow as tf
 from tensorflow.contrib.training import HParams
 import numpy as np
 
+from unittest import mock
 import pytest
 from pytest import approx
 
 from lm_training_process import LanguageModel
+from generalized_vocabulary import GeneralizedVocabulary, SpecialUnit
+from vocabularies_preprocessing.mock_vocabulary import MockVocab
+
 
 @pytest.fixture
 def hparams():
@@ -622,3 +626,164 @@ def test_score_of_true_word_fn(logits, targets, expected_score):
         r_score = sess.run(t_score)
     
     assert (expected_score == r_score).all()
+
+
+@pytest.mark.parametrize("k, logits, expected_predictions",
+    [
+        (
+            1,
+            np.array(
+                    [
+                        [
+                            [1.0, 2.0, 3.0, 0.0],
+                            [5.0, 6.0, 7.0, 8.0],
+                            [9.0, 0.0, 1.0, 2.0],
+                        ],
+                        [
+                            [1.0, 3.0, 2.0, 2.0],
+                            [5.0, 6.0, 8.0, 8.0],
+                            [1.0, 2.0, 1.0, 2.0],
+                        ],
+                    ]
+                ),
+            np.array(
+                [
+                    [
+                        [2],[3],[0]
+                    ],
+                    [
+                        [1],[2],[1]
+                    ],
+                ]
+            ), 
+        ),
+        (
+            2,
+            np.array(
+                    [
+                        [
+                            [1.0, 2.0, 3.0, 0.0],
+                            [5.0, 6.0, 7.0, 8.0],
+                            [9.0, 0.0, 1.0, 2.0],
+                        ],
+                        [
+                            [1.0, 3.0, 2.0, 2.0],
+                            [5.0, 6.0, 8.0, 8.0],
+                            [1.0, 2.0, 1.0, 2.0],
+                        ],
+                    ]
+                ),
+            np.array(
+                [
+                    [
+                        [2,1],[3,2],[0,3]
+                    ],
+                    [
+                        [1,2],[2,3],[1,3]
+                    ],
+                ]
+            ), 
+        ),
+    ]
+)
+def test_make_predictions__without_converting_to_words(k, logits, expected_predictions):
+    mockLanguageModel = mock.Mock()
+    mockLanguageModel.make_predictions = LanguageModel.make_predictions
+    mockLanguageModel.predict_top_k = k
+    mockLanguageModel.words_as_text_preview = False
+
+    t_predictions = mockLanguageModel.make_predictions(mockLanguageModel, logits)
+
+    with tf.Session() as sess:
+        r_predictions = sess.run(t_predictions)
+
+    assert (r_predictions == expected_predictions).all()
+
+
+@pytest.mark.parametrize("top_predicted_words_ids, expected_tokens",
+    [
+        (
+            np.array(
+                [
+                    [
+                        [2,1],[4,2],[0,5]
+                    ],
+                    [
+                        [1,2],[2,4],[1,6]
+                    ],
+                ]
+            ), 
+            np.array(
+                [
+                    [
+                        [b"<<END_OF_SEQUENCE>>",b"<<START_OF_SEQUENCE>>"],[b"a",b"<<END_OF_SEQUENCE>>"],[b"<<ZERO>>",b"b"]
+                    ],
+                    [
+                        [b"<<START_OF_SEQUENCE>>",b"<<END_OF_SEQUENCE>>"],[b"<<END_OF_SEQUENCE>>",b"a"],[b"<<START_OF_SEQUENCE>>",b"c"]
+                    ],
+                ]
+            ), 
+        )
+    ]
+)
+def test_predictions_ids_to_tokens(top_predicted_words_ids, expected_tokens):
+    # b"<<ZERO>>", b"<<START_OF_SEQUENCE>>", b"<<END_OF_SEQUENCE>>", ???, b"a", b"b", b"c"
+    mockLanguageModel = mock.Mock()
+    mockLanguageModel.predictions_ids_to_tokens = LanguageModel.predictions_ids_to_tokens
+    mockLanguageModel.words_as_text_preview = True
+
+    specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
+    vocab = MockVocab()
+    generalized = GeneralizedVocabulary(vocab, specials)
+
+    mockLanguageModel.vocabulary_generalized = generalized
+
+    t_top_predicted_words_ids = tf.convert_to_tensor(top_predicted_words_ids)
+    t_top_predicted_words_tokens = mockLanguageModel.predictions_ids_to_tokens(mockLanguageModel, t_top_predicted_words_ids)
+
+    with tf.Session() as sess:
+        sess.run(tf.tables_initializer())
+        r_top_predicted_words_tokens = sess.run(t_top_predicted_words_tokens)
+
+    assert (r_top_predicted_words_tokens == expected_tokens).all()
+
+
+@pytest.mark.parametrize("top_predicted_words_ids, expected_tokens",
+    [
+        (
+            np.array(
+                [
+                    [
+                        [2,3]
+                    ],
+                ]
+            ), 
+            np.array(
+                [
+                    [
+                        [b"<<END_OF_SEQUENCE>>",b""]
+                    ],
+                ]
+            ), 
+        )
+    ]
+)
+def test_predictions_ids_to_tokens__undefined_id_proof(top_predicted_words_ids, expected_tokens):
+    mockLanguageModel = mock.Mock()
+    mockLanguageModel.predictions_ids_to_tokens = LanguageModel.predictions_ids_to_tokens
+    mockLanguageModel.words_as_text_preview = True
+
+    specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
+    vocab = MockVocab()
+    generalized = GeneralizedVocabulary(vocab, specials)
+
+    mockLanguageModel.vocabulary_generalized = generalized
+
+    t_top_predicted_words_ids = tf.convert_to_tensor(top_predicted_words_ids)
+    t_top_predicted_words_tokens = mockLanguageModel.predictions_ids_to_tokens(mockLanguageModel, t_top_predicted_words_ids)
+
+    with tf.Session() as sess:
+        sess.run(tf.tables_initializer())
+        r_top_predicted_words_tokens = sess.run(t_top_predicted_words_tokens)
+
+    assert (r_top_predicted_words_tokens[:,:,0] == expected_tokens[:,:,0]).all() # second one is immaterial as it is not ID at all, only matters that it doesn't cause error

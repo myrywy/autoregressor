@@ -57,7 +57,8 @@ class LanguageModel:
     def build_graph(self):
         self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
         self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
-        self.predictions_ids, self.predictions = self.make_predictions(self.logits, self.targets)
+        self.predictions_ids = self.make_predictions(self.logits, self.targets)
+        self.predictions_tokens
         if self.mode != tf.estimator.ModeKeys.PREDICT:
             self.train_op = self.optimize(self.loss)
             tf.summary.text("top_k_predictions", self.predictions)
@@ -100,16 +101,16 @@ class LanguageModel:
 
     def make_predictions(self, logits):
         top_predicted_words_ids = tf.nn.top_k(logits, self.predict_top_k)
-        if self.words_as_text_preview and self.vocabulary_generalized is not None:
-            original_shape = tf.shape(top_predicted_words_ids)
-            flatten_top_predicted_words_ids = tf.reshape(top_predicted_words_ids, (-1,))
-            flatten_top_predicted_words = self.vocabulary_generalized.generalized_id_to_token()(flatten_top_predicted_words_ids)
-            top_predicted_words = tf.reshape(flatten_top_predicted_words, shape=original_shape)
-        elif self.words_as_text_preview:
-            logging.warning("Parameter words_as_text_preview evaluates to true but vocabulary_generalized is None. Skipping text preview.")
-        else:
-            top_predicted_words = None
-        return top_predicted_words_ids, top_predicted_words
+        return top_predicted_words_ids.indices
+
+    def predictions_ids_to_tokens(self, top_predicted_words_ids):
+        if self.vocabulary_generalized is None:
+            raise ValueError("vocabulary_generalized is None but predictions_ids_to_tokens called")
+        original_shape = tf.shape(top_predicted_words_ids)
+        flatten_top_predicted_words_ids = tf.reshape(top_predicted_words_ids, (-1,))
+        flatten_top_predicted_words = self.vocabulary_generalized.generalized_id_to_token()(flatten_top_predicted_words_ids)
+        top_predicted_words = tf.reshape(flatten_top_predicted_words, shape=original_shape)
+        return top_predicted_words
 
     def loss_fn(self, targets, logits, lengths):
         cross_entropy = self.cross_entropy_fn(targets, logits, lengths)
