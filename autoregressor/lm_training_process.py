@@ -57,12 +57,14 @@ class LanguageModel:
     def build_graph(self):
         self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
         self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
-        self.predictions_ids = self.make_predictions(self.logits, self.targets)
-        self.predictions_tokens
+        self.predictions_ids = self.make_predictions(self.logits)
+        tf.summary.tensor_summary("top_k_predictions_ids", self.predictions_ids)
+        if self.words_as_text_preview:
+            self.predictions_tokens = self.predictions_ids_to_tokens(self.predictions_ids)
+            tf.summary.text("top_k_predictions", self.predictions_tokens)
         if self.mode != tf.estimator.ModeKeys.PREDICT:
             self.train_op = self.optimize(self.loss)
-            tf.summary.text("top_k_predictions", self.predictions)
-            self.position_of_true_word = self.position_of_true_word_fn(self.logits, self.targets)
+            self.position_of_true_word = self.score_of_true_word_fn(self.logits, self.targets)
             tf.summary.tensor_summary("position_of_true_word", self.position_of_true_word)
             self.mean_position_of_true_word = tf.reduce_mean(self.position_of_true_word)
             tf.summary.scalar("mean_position_of_true_word", self.position_of_true_word)
