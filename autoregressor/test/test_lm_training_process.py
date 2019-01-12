@@ -332,7 +332,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                 [1,1],
                 [1,0],
             ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
-            3/4 * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+            3/3 * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
         ),
         (
             np.array([
@@ -356,7 +356,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                 [1,1],
                 [0,1],
             ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
-            3/4 * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+            3/3 * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
         ),
         (
             np.array([
@@ -386,7 +386,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                     0
                 ],
             ]),
-            1/4 * ( 
+            1/3 * ( 
                 (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))) + \
                 (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0))) + \
                 (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
@@ -420,7 +420,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                     (-1) * np.log(np.exp(0.3)/(np.exp(0.7)+np.exp(0)+np.exp(0)+np.exp(0.3))),
                 ],
             ]),
-            1/4 * ( 
+            1/3 * ( 
                     (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))) + \
                     (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0))) + \
                     (-1) * np.log(np.exp(0.3)/(np.exp(0.7)+np.exp(0)+np.exp(0)+np.exp(0.3)))
@@ -444,7 +444,7 @@ def test_cross_entropy_fn__with_mask_and_time_major(hparams, targets, logits, le
     hparams.set_hparam("time_major_optimization", True)
     lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
     t_cross_entropy = lm.cross_entropy_fn(targets, logits, length)
-    t_loss = lm.cross_entropy_based_loss(t_cross_entropy)
+    t_loss = lm.loss_fn(targets, logits, length)
     with tf.Session() as sess:
         r_cross_entropy, r_loss = sess.run([t_cross_entropy, t_loss])
     

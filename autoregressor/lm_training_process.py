@@ -56,7 +56,7 @@ class LanguageModel:
 
     def build_graph(self):
         self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
-        self.loss = self.loss_fn(self.logits, self.targets, self.lengths)
+        self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
         self.predictions_ids, self.predictions = self.make_predictions(self.logits, self.targets)
         if self.mode != tf.estimator.ModeKeys.PREDICT:
             self.train_op = self.optimize(self.loss)
@@ -74,7 +74,9 @@ class LanguageModel:
 
     def set_metrics(self):
         self.position_of_true_word_metric = tf.metrics.mean(self.position_of_true_word)
-        self.log_perplexity_metric, self.log_perplexity_metric_update_op = tf.metrics.mean(self.cross_entropy_fn())
+        sequence_mask = self.cost_mask(self.lengths, self.max_length(), self.time_major_optimization)
+        cross_entropy = self.cross_entropy_fn(self.targets, self.logits, self.lengths)
+        self.log_perplexity_metric, self.log_perplexity_metric_update_op = tf.metrics.mean(cross_entropy, weights=sequence_mask)
         self.perplexity_metric = tf.exp(self.log_perplexity_metric)
         self.metrics = {
             "position_of_true_word": self.position_of_true_word_metric,
@@ -109,9 +111,15 @@ class LanguageModel:
             top_predicted_words = None
         return top_predicted_words_ids, top_predicted_words
 
-    def loss_fn(self, logits, targets, lengths):
-        ce = self.cross_entropy_fn(targets, logits, lengths)
-        return tf.reduce_mean(self.cross_entropy_based_loss(ce))
+    def loss_fn(self, targets, logits, lengths):
+        cross_entropy = self.cross_entropy_fn(targets, logits, lengths)
+        cross_entropy_sum = tf.reduce_sum(cross_entropy)
+
+        mask = self.cost_mask(lengths, self.max_length(), self.time_major_optimization)
+        mask_sum = tf.reduce_sum(mask)
+        
+        mean_of_non_masked_values = cross_entropy_sum / mask_sum
+        return mean_of_non_masked_values
 
     def cross_entropy_based_loss(self, cross_entropy):
         return tf.reduce_mean(cross_entropy)
@@ -157,6 +165,10 @@ class LanguageModel:
             loss=loss, global_step=tf.train.get_global_step())
         
         return train_op
+
+    def max_length(self):
+        time_dim = 0 if self.time_major_optimization else 1
+        return tf.shape(self.targets)[time_dim]
 
     def estimator_spec(self):
         if not self.graph_build:
