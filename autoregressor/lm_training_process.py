@@ -124,9 +124,6 @@ class LanguageModel:
         mean_of_non_masked_values = cross_entropy_sum / mask_sum
         return mean_of_non_masked_values
 
-    def cross_entropy_based_loss(self, cross_entropy):
-        return tf.reduce_mean(cross_entropy)
-    
     def cross_entropy_fn(self, targets, logits, lengths):
         cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
                                                                         logits=logits)
