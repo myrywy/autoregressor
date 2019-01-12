@@ -57,6 +57,7 @@ class LanguageModel:
     def build_graph(self):
         self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
         self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
+        self.probabilities = self.probabilities_fn(self.logits)
         self.predictions_ids = self.make_predictions(self.logits)
         tf.summary.tensor_summary("top_k_predictions_ids", self.predictions_ids)
         if self.words_as_text_preview:
@@ -128,7 +129,7 @@ class LanguageModel:
         cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
                                                                         logits=logits)
         if self.mask_padding_cost:
-            mask = self.cost_mask(lengths, tf.shape(targets)[1], self.time_major_optimization)
+            mask = self.cost_mask(lengths, self.max_length(), self.time_major_optimization)
             cross_entropy = cross_entropy * mask
         return cross_entropy
 
