@@ -87,11 +87,11 @@ class LanguageModel:
     def score_of_true_word_fn(self, logits, targets):
         flatten_logits = tf.reshape(logits, (-1,tf.shape(logits)[-1]))
         flatten_targets = tf.reshape(targets, (-1,))
-        flatten_logits_of_true_words = tf.map_fn((lambda x: tf.gather(x[0], x[1])), [flatten_logits, flatten_targets], dtype=tf.float32)
+        flatten_logits_of_true_words = tf.map_fn((lambda x: tf.gather(x[0], x[1])), [flatten_logits, flatten_targets], dtype=logits.dtype)
         logits_of_true_words = tf.reshape(flatten_logits_of_true_words, tf.shape(targets))
-
-        is_score_higher_eq_than_true_one = tf.greater_equal(logits, tf.expand_dims(logits_of_true_words,1))
-        n_score_higher_eq_than_true_one = tf.reduce_sum(tf.cast(is_score_higher_eq_than_true_one, tf.int8), axis=1)
+        
+        is_score_higher_eq_than_true_one = tf.greater_equal(logits, tf.expand_dims(logits_of_true_words,-1))
+        n_score_higher_eq_than_true_one = tf.reduce_sum(tf.cast(is_score_higher_eq_than_true_one, tf.int8), axis=-1)
 
         return n_score_higher_eq_than_true_one - 1 # -1 comes from the fact that true index has score equal to true index so it counts to higher-equal
 

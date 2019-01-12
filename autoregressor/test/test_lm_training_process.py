@@ -491,3 +491,134 @@ def test_cost_mask(lengths, max_length, time_major, expected_mask):
 
     assert (r_mask == expected_mask).all()
 
+@pytest.mark.parametrize("logits, targets, expected_score",
+    [
+        (
+            np.array(
+                    [
+                        [
+                            [0.2,0.3,0.4]
+                        ]
+                    ]
+                ),
+            np.array(
+                    [
+                        [0]
+                    ]
+                ),
+            np.array(
+                    [
+                        [2]
+                    ]
+                )
+        ),
+        (
+            np.array(
+                    [   
+                        [
+                            [0.2,0.3,0.4]
+                        ]
+                    ]
+                ),
+            np.array(
+                    [
+                        [1]
+                    ]
+                ),
+            np.array(
+                    [
+                        [1]
+                    ]
+                )
+        ),
+        (
+            np.array(
+                    [   
+                        [
+                            [0.2,0.3,0.4]
+                        ]
+                    ]
+                ),
+            np.array(
+                    [
+                        [2]
+                    ]
+                ),
+            np.array(
+                    [
+                        [0]
+                    ]
+                )
+        ),
+        (
+            np.array(
+                    [
+                        [
+                            [0.2,0.3,0.4],
+                            [0.2,0.5,0.4],
+                            [0.5,0.3,0.4],
+                            [0.5,0.6,0.4],
+                        ]
+                    ]
+                ),
+            np.array(
+                    [
+                        [2,
+                        2,
+                        2,
+                        2]
+                    ]
+                ),
+            np.array(
+                    [
+                        [0,
+                        1,
+                        1,
+                        2]
+                    ]
+                )
+        ),
+        (
+            np.array(
+                    [
+                        [
+                            [0.2,0.3,0.4],
+                            [0.2,0.5,0.4],
+                            [0.5,0.3,0.4],
+                            [0.5,0.6,0.4],
+                        ],
+                        [
+                            [0.2,0.5,0.4],
+                            [0.5,0.5,0.4],
+                            [0.5,0.3,0.4],
+                            [0.0,0.0,0.0],
+                        ],
+                    ]
+                ),
+            np.array(
+                    [
+                        [0, 1, 2, 2],
+                        [2, 1, 0, 2],
+                    ]
+                ),
+            np.array(
+                    [
+                        [2, 0, 1, 2],
+                        [1, 1, 0, 2],
+                    ]
+                )
+        ),
+    ]
+)
+def test_score_of_true_word_fn(logits, targets, expected_score):
+    t_logits = tf.convert_to_tensor(logits)
+    t_targets = tf.convert_to_tensor(targets)
+    
+    score_of_true_word_fn = partial(LanguageModel.score_of_true_word_fn, LanguageModel)
+
+    t_score = score_of_true_word_fn(t_logits, t_targets)
+
+    with tf.Session() as sess:
+        r_score = sess.run(t_score)
+    
+    assert (expected_score == r_score).all()
