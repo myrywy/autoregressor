@@ -28,6 +28,8 @@ class GeneralizedVocabulary:
         specials_names = ["<<ZERO>>"] + ["<<{}>>".format(name) for name in specials_names]
         def op(ids):
             ids = tf.convert_to_tensor(ids)
+            if ids.dtype == tf.int32:
+                ids = tf.cast(ids, dtype=tf.int64)
             specials_names_tensor = tf.convert_to_tensor(specials_names, dtype=tf.string)
             words_from_specials = tf.nn.embedding_lookup(specials_names_tensor, tf.minimum(ids, last_special_id))
             vocab_ids = to_vocab_id(ids)
