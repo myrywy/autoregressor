@@ -140,7 +140,7 @@ def test_maybe_transpose_batch_time(hparams, time_major_optimization, inputs, ta
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -163,7 +163,7 @@ def test_maybe_transpose_batch_time(hparams, time_major_optimization, inputs, ta
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -217,7 +217,7 @@ def test_cross_entropy_fn__without_mask(hparams, targets, logits, length, expect
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -240,7 +240,7 @@ def test_cross_entropy_fn__without_mask(hparams, targets, logits, length, expect
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -263,7 +263,7 @@ def test_cross_entropy_fn__without_mask(hparams, targets, logits, length, expect
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -319,7 +319,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -343,7 +343,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -367,7 +367,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -401,7 +401,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
                 [0,1],
                 [2,3],
             ]),
-            # test case - logits 100% correct
+            
             np.array([
                 [
                     #[0,1,2,3]
@@ -787,3 +787,174 @@ def test_predictions_ids_to_tokens__undefined_id_proof(top_predicted_words_ids, 
         r_top_predicted_words_tokens = sess.run(t_top_predicted_words_tokens)
 
     assert (r_top_predicted_words_tokens[:,:,0] == expected_tokens[:,:,0]).all() # second one is immaterial as it is not ID at all, only matters that it doesn't cause error
+
+
+
+
+
+
+
+
+
+
+@pytest.mark.parametrize("targets, logits, length, expected_cross_entropy, expected_log_perplexity",
+    [
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 1, 0, 0, 0],
+                    [ 0, 1, 0, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0, 0, 0, 1], # time major => masked 
+                ],
+            ]),
+            np.array([2,1]),
+            np.array([
+                [1,1],
+                [1,0],
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
+            3/3 * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 1, 0, 0, 0],
+                    [ 0, 1, 0, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0], # time major => masked 
+                    [ 0, 0, 0, 1],
+                ],
+            ]),
+            np.array([1,2]),
+            np.array([
+                [1,1],
+                [0,1],
+            ]) * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
+            3/3 * (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 0.5, 0.5, 0, 0],
+                    [ 0, 0.6, 0.4, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],
+                    [ 0.7, 0, 0, 0.3], # time major => masked 
+                ],
+            ]),
+            np.array([2,1]),
+            np.array([
+                [
+                    (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))),
+                    (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0)))
+                ],
+                [
+                    (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0))),
+                    0
+                ],
+            ]),
+            1/3 * ( 
+                (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))) + \
+                (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0))) + \
+                (-1) * np.log(np.exp(1)/(np.exp(1)+np.exp(0)+np.exp(0)+np.exp(0)))
+            )
+        ),
+        (
+            np.array([
+                [0,1],
+                [2,3],
+            ]),
+            
+            np.array([
+                [
+                    #[0,1,2,3]
+                    [ 0.5, 0.5, 0, 0],
+                    [ 0, 0.6, 0.4, 0],
+                ],
+                [
+                    [ 0, 0, 1, 0],  # time major => masked 
+                    [ 0.7, 0, 0, 0.3],
+                ],
+            ]),
+            np.array([1,2]),
+            np.array([
+                [
+                    (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))),
+                    (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0)))
+                ],
+                [
+                    0,
+                    (-1) * np.log(np.exp(0.3)/(np.exp(0.7)+np.exp(0)+np.exp(0)+np.exp(0.3))),
+                ],
+            ]),
+            1/3 * ( 
+                    (-1) * np.log(np.exp(0.5)/(np.exp(0.5)+np.exp(0.5)+np.exp(0)+np.exp(0))) + \
+                    (-1) * np.log(np.exp(0.6)/(np.exp(0)+np.exp(0.6)+np.exp(0.4)+np.exp(0))) + \
+                    (-1) * np.log(np.exp(0.3)/(np.exp(0.7)+np.exp(0)+np.exp(0)+np.exp(0.3)))
+                )
+        ),
+    ]
+)
+def test_metrics(hparams, targets, logits, length, expected_cross_entropy, expected_log_perplexity):
+    inputs = tf.constant([
+        [
+            [0.5,0.6],
+            [0.5,0.6],
+        ],
+        [
+            [0.5,0.6],
+            [0.5,0.6],
+        ]
+    ])
+    targets_batch_major = targets.transpose()
+
+    # Now targets are batch-major, logits are time-major because targets are properly passed to constructor and logits are injected manually
+    t_targets, t_logits, t_length = tf.convert_to_tensor(targets_batch_major, dtype=tf.int32), tf.convert_to_tensor(logits, dtype=tf.float32), tf.convert_to_tensor(length)
+    
+    hparams.set_hparam("mask_padding_cost", True)
+    hparams.set_hparam("time_major_optimization", True)
+    lm = LanguageModel({"inputs": inputs, "length": t_length}, {"targets": t_targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    lm.logits = t_logits
+    lm.position_of_true_word = tf.constant(
+            np.array(
+                    [
+                        [2, 0, 1, 2],
+                        [1, 1, 0, 2],
+                    ]
+                )
+            )
+    lm.set_metrics()
+    with tf.Session() as sess:
+        sess.run(tf.global_variables_initializer())
+        running_vars = tf.get_collection(tf.GraphKeys.LOCAL_VARIABLES)
+        running_vars_initializer = tf.variables_initializer(var_list=running_vars)
+        sess.run(running_vars_initializer)
+        sess.run([lm.log_perplexity_metric_update_op, lm.position_of_true_word_metric[1]])
+        r_log_perplexity_metric, r_perplexity_metric, r_position_of_true_word_metric = \
+            sess.run([lm.log_perplexity_metric, lm.perplexity_metric, lm.position_of_true_word_metric[0]])
+    
+    assert r_position_of_true_word_metric == approx(9/8, abs=0.001)
+    assert r_log_perplexity_metric == approx(expected_log_perplexity, abs=0.001)
+    assert r_perplexity_metric == approx(np.exp(expected_log_perplexity), abs=0.001)
