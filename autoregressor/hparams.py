@@ -10,6 +10,7 @@ hparams = HParams(
     rnn_layer="lstm_block_cell",
     profiler=False,
     size_based_device_assignment=False,
+    device="CPU",   # "CPU", "GPU" or ""
     batch_size=5,
     shuffle_examples_buffer_size=1000,
     shuffle_examples_seed=0,
@@ -19,4 +20,5 @@ hparams = HParams(
     dynamic_rnn_swap_memory=True,
     predict_top_k=1,
     words_as_text_preview=True,
+    time_major_optimization=True,
 )

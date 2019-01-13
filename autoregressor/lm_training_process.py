@@ -3,7 +3,7 @@ import logging
 import tensorflow as tf
 
 from lstm_lm import PredictNext
-from utils import maybe_inject_hparams
+from utils import maybe_inject_hparams, without
 
 logger = logging.getLogger(__name__)
 
@@ -21,6 +21,8 @@ class LanguageModel:
         self.learning_rate = None
         self.predict_top_k = None
         self.words_as_text_preview = None
+        self.size_based_device_assignment = None
+        self.device = None
         
         maybe_inject_hparams(
             self, 
@@ -34,7 +36,9 @@ class LanguageModel:
                 "rnn_last_layer_num_units",
                 "learning_rate",
                 "predict_top_k",
-                "words_as_text_preview"
+                "words_as_text_preview",
+                "size_based_device_assignment",
+                "device",
                 ]
             )
         
@@ -45,7 +49,6 @@ class LanguageModel:
         self.mode = mode
 
         self.inputs, self.targets, self.lengths = self.unpack_nested_example(features, labels)
-        self.inputs, self.targets = self.maybe_transpose_batch_time(self.inputs, self.targets)
 
         self.graph_build = False
     
@@ -56,23 +59,42 @@ class LanguageModel:
         return inputs, targets, lengths
 
     def build_graph(self):
-        self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
-        self.probabilities = self.probabilities_fn(self.logits)
-        self.predictions_ids = self.make_predictions(self.logits)
-        tf.summary.tensor_summary("top_k_predictions_ids", self.predictions_ids)
-        if self.words_as_text_preview:
-            self.predictions_tokens = self.predictions_ids_to_tokens(self.predictions_ids)
-            tf.summary.text("top_k_predictions", self.predictions_tokens)
-        if self.mode != tf.estimator.ModeKeys.PREDICT:
-            self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
-            self.train_op = self.optimize(self.loss)
-            self.position_of_true_word = self.score_of_true_word_fn(self.logits, self.targets)
-            tf.summary.tensor_summary("position_of_true_word", self.position_of_true_word)
-            self.mean_position_of_true_word = tf.reduce_mean(self.position_of_true_word)
-            tf.summary.scalar("mean_position_of_true_word", self.position_of_true_word)
-            tf.summary.scalar("batch_perplexity", self.perplexity_from_loss(self.loss))
-            self.set_metrics()
-        self.graph_build = True
+        with self.get_device_context_manager():
+            self.inputs, self.targets = self.maybe_transpose_batch_time(self.inputs, self.targets)
+            self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
+            self.probabilities = self.probabilities_fn(self.logits)
+            self.predictions_ids = self.make_predictions(self.logits)
+            if self.words_as_text_preview:
+                self.predictions_tokens = self.predictions_ids_to_tokens(self.predictions_ids)
+            if self.time_major_optimization:
+                self.probabilities = tf.transpose(self.probabilities, (1,0,2))
+                self.predictions_ids = tf.transpose(self.predictions_ids, (1,0,2))
+                if self.words_as_text_preview:
+                    self.predictions_tokens = tf.transpose(self.predictions_tokens, (1,0,2))
+            tf.summary.tensor_summary("top_k_predictions_ids", self.predictions_ids)
+            if self.words_as_text_preview:
+                tf.summary.text("top_k_predictions", self.predictions_tokens)
+            if self.mode != tf.estimator.ModeKeys.PREDICT:
+                self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
+                self.train_op = self.optimize(self.loss)
+                self.position_of_true_word = self.score_of_true_word_fn(self.logits, self.targets)
+                tf.summary.tensor_summary("position_of_true_word", self.position_of_true_word)
+                self.mean_position_of_true_word = tf.reduce_mean(self.position_of_true_word)
+                tf.summary.scalar("mean_position_of_true_word", self.position_of_true_word)
+                tf.summary.scalar("batch_perplexity", self.perplexity_from_loss(self.loss))
+                self.set_metrics()
+            self.graph_build = True
+
+    def get_device_context_manager(self):
+        if self.size_based_device_assignment:
+            raise NotImplementedError
+        if self.device == "GPU":
+            return tf.device("/device:GPU:0")
+        if self.device == "CPU":
+            return tf.device("/device:CPU:0")
+        if self.device == "" or self.device is None:
+            return without
+        raise RuntimeError("Invalid device parameter '{}'".format(self.device))
 
     def perplexity_from_loss(self, loss):
         return tf.exp(loss)
@@ -143,7 +165,8 @@ class LanguageModel:
     def maybe_transpose_batch_time(self, inputs, targets):
         if self.time_major_optimization:
             inputs = tf.transpose(inputs, (1, 0, 2))
-            targets = tf.transpose(targets, (1, 0))
+            if targets is not None:
+                targets = tf.transpose(targets, (1, 0))
         return inputs, targets
 
     def unrolled_rnn(self, inputs, lengths):
@@ -187,7 +210,7 @@ class LanguageModel:
             return tf.estimator.EstimatorSpec(
                 self.mode,
                 predictions=predictions,
-                loss=self.loss,
+                loss=self.loss if mode == tf.estimator.ModeKeys.EVAL else None,
                 train_op=self.train_op,
                 eval_metric_ops=self.metrics,
             )
