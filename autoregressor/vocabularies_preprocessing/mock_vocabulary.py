@@ -57,5 +57,8 @@ class MockVocab(Vocabulary):
 
     def vocab_size(self):
         return 4
+    
+    def ids_range(self):
+        return self.FIRST_ID, self.FIRST_ID + self.vocab_size() - 1
 
     

@@ -100,6 +100,9 @@ class Glove300(Vocabulary):
         with open(index_path) as index_file:
             return len([*index_file])
     
+    def ids_range(self):
+        return 0, self.vocab_size() - 1
+    
     def after_session_created_hook_fn(self, session, graph=None):
         if graph is None:
             graph = tf.get_default_graph()

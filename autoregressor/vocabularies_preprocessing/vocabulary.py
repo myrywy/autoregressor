@@ -151,6 +151,16 @@ class Vocabulary(ABC):
         """ 
         pass
 
+    @abstractmethod
+    def ids_range(self):
+        """Return range of ids in vocabulary as a tuple - incusively from both sides, i.e. the first and the last id from vocabulary
+
+        Returns:
+            int: first id
+            int: last id
+        """ 
+        pass
+
     def after_session_created_hook_fn(self, session, graph=None):
         """This function will be run after tf.Session is created and before ops created using Vocabulary are run.
         Overwrite this function with all necessary initailizations.
