@@ -44,11 +44,14 @@ class LanguageModel:
         
         # TODO: this should probably be factored out of this class
         self.vocabulary_generalized = vocabulary_generalized
-        self.vocab_size = vocabulary_generalized.vocab_size() - 3 # THIS -3 is for regression test only; there was bug in previous version so...
+        self.vocab_size = vocabulary_generalized.vocab_size() - 3 if vocabulary_generalized is not None else None # THIS -3 is for regression test only; there was bug in previous version so...
 
         self.mode = mode
 
         self.inputs, self.targets, self.lengths = self.unpack_nested_example(features, labels)
+
+        with self.get_device_context_manager():
+            self.inputs, self.targets = self.maybe_transpose_batch_time(self.inputs, self.targets)
 
         self.graph_build = False
     
@@ -60,7 +63,6 @@ class LanguageModel:
 
     def build_graph(self):
         with self.get_device_context_manager():
-            self.inputs, self.targets = self.maybe_transpose_batch_time(self.inputs, self.targets)
             self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
             self.probabilities = self.probabilities_fn(self.logits)
             self.predictions_ids = self.make_predictions(self.logits)
@@ -236,12 +238,14 @@ from vocabularies_preprocessing.glove300d import Glove300
 from corpora_preprocessing.simple_examples import SimpleExamplesCorpus, DatasetType
 from lm_input_data_pipeline import LmInputDataPipeline
 from train_lm_on_simple_examples_and_glove import read_dataset_from_dir 
-from generalized_vocabulary import GeneralizedVocabulary, SpecialUnit
+from generalized_vocabulary import GeneralizedVocabulary, SpecialUnit, LMGeneralizedVocabulary
 from lm_training_data import LanguageModelTrainingData
+from vocabulary_factory import get_vocabulary
 
 
 def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subset, hparams, take_first_n=20):
-    glove = Glove300(dry_run=True)
+    #glove = Glove300(dry_run=True)
+    glove = get_vocabulary("glove300")
 
     data = LanguageModelTrainingData(
         vocabulary_name="glove300", 
@@ -258,8 +262,8 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
 
-    specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
-    generalized = GeneralizedVocabulary(glove, specials)
+    #specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
+    generalized = LMGeneralizedVocabulary(glove)
     
     with tf.device("/device:CPU:0"):
         model = LanguageModelCallable(generalized, hparams)

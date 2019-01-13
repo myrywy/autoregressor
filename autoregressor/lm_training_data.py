@@ -8,11 +8,9 @@ from lm_input_data_pipeline import LmInputDataPipeline
 from lm_dataset_io import CachedLmInputDataPipeline
 from lstm_lm import get_autoregressor_model_fn
 from lm_dataset_io import read_dataset_from_dir, save_dataset_to_files
+from vocabulary_factory import get_vocabulary
+from corpus_factory import get_corpus
 from hparams import hparams
-
-VOCABULARY_TYPES = {
-    "glove300": Glove300
-}
 
 CORPUS_TYPES = {
     "simple_examples": SimpleExamplesCorpus
@@ -20,7 +18,7 @@ CORPUS_TYPES = {
 
 class LanguageModelTrainingData:
     def __init__(self, vocabulary_name, corpus_name, cached_data_dir, batch_size=None, shuffle_examples_buffer_size=None, hparams=hparams):
-        self.vocabulary, self.corpus = VOCABULARY_TYPES[vocabulary_name](), CORPUS_TYPES[corpus_name]()
+        self.vocabulary, self.corpus = get_vocabulary(vocabulary_name), get_corpus(corpus_name)
         self.batch_size = batch_size
         self.shuffle_examples_buffer_size = shuffle_examples_buffer_size
         self.cached_data_dir = cached_data_dir

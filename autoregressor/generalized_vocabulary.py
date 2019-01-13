@@ -109,3 +109,8 @@ class GeneralizedVocabulary:
             feature_number = table.lookup(id_generalized)
             return tf.one_hot(feature_number, depth=number_of_features)
         return op
+
+class LMGeneralizedVocabulary(GeneralizedVocabulary):
+    NEEDED_SPECIAL_UNITS = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
+    def __init__(self, vocabulary):
+        super(LMGeneralizedVocabulary, self).__init__(vocabulary, LMGeneralizedVocabulary.NEEDED_SPECIAL_UNITS)

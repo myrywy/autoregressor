@@ -5,6 +5,8 @@ from subprocess import run
 from tempfile import TemporaryDirectory
 import tensorflow as tf 
 
+from corpora_preprocessing.corpus import Corpus, DatasetType
+
 def get_corpus():
     base_data_dir = get_create_base_data_dir()
     download_path = base_data_dir / "simple-examples.tgz"
@@ -79,13 +81,7 @@ def token_ids_to_text_dataset(dataset, get_id_to_words_fn):
     dataset = dataset.map(lambda strings: lookup(strings))
     return dataset
 
-class DatasetType:
-    TRAIN = "train"
-    VALID = "valid"
-    TEST = "test"
-
-
-class SimpleExamplesCorpus:
+class SimpleExamplesCorpus(Corpus):
     def __init__(self, root_path=get_corpus_base_dir()):
             self._root_path = Path(root_path)
 
@@ -102,6 +98,8 @@ class SimpleExamplesCorpus:
             return self._root_path/"raw"/"ptb.valid.txt"
         if subset == DatasetType.TEST:
             return self._root_path/"raw"/"ptb.test.txt"
+        if subset == "check":
+            return self._root_path/"raw"/"ptb.check.txt"
         else:
             raise ValueError("Invalid corpus subset type: {}".format(subset))
 
