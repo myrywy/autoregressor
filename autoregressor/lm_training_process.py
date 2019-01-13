@@ -242,13 +242,12 @@ from lm_training_data import LanguageModelTrainingData
 
 def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subset, hparams, take_first_n=20):
     glove = Glove300(dry_run=True)
-    BATCH_SIZE = 5
 
     data = LanguageModelTrainingData(
         vocabulary_name="glove300", 
         corpus_name="simple_examples", 
         cached_data_dir=data_dir, 
-        batch_size=BATCH_SIZE, 
+        batch_size=hparams.batch_size, 
         shuffle_examples_buffer_size=None, 
         hparams=hparams)
     
