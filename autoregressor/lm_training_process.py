@@ -228,42 +228,6 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
         train_data = input_pipe.padded_batch(train_data, BATCH_SIZE)
         return train_data
 
-    '''def model_function(features, labels, mode, params):
-        input_pipe = LmInputDataPipeline(glove)
-        vocab_size = glove.vocab_size()
-        embedding_size = input_pipe._vocab_generalized.vector_size()
-        id_to_embeding_fn = input_pipe.get_id_to_embedding_mapping() if mode == tf.estimator.ModeKeys.PREDICT else lambda x: tf.zeros((tf.shape(x), embedding_size), tf.float32)
-        #with tf.device(device_assignment_function) if hparams.size_based_device_assignment else without:
-        with tf.device("/device:CPU:0"):
-            concrete_model_fn = get_autoregressor_model_fn(
-                    vocab_size, id_to_embeding_fn, time_major_optimization=True, predict_as_pure_lm=True, hparams=hparams)
-            estimator_spec = concrete_model_fn(features, labels, mode, params)
-        training_hooks = []
-        predictions = estimator_spec.predictions
-        if mode == tf.estimator.ModeKeys.PREDICT:
-            training_hooks.append(InitializeVocabularyHook(glove))
-
-            predicted_ids = predictions["predicted_word_id"]
-            words_shape = tf.shape(predicted_ids)
-            to_vocab_id = input_pipe._vocab_generalized.generalized_id_to_vocab_id()
-            to_word = glove.id_to_word_op()
-            predicted_ids = tf.reshape(predicted_ids, shape=[-1])
-            predicted_words = to_word(to_vocab_id(predicted_ids))
-            predicted_words = tf.reshape(predicted_words, shape=words_shape)
-            predictions["predicted_word"] = predicted_words
-        if hparams.profiler:
-            training_hooks.append(tf.train.ProfilerHook(output_dir=model_dir, save_secs=30, show_memory=True))
-            training_hooks.append(FullLogHook())
-        estimator_spec_with_hooks = tf.estimator.EstimatorSpec(
-            mode=estimator_spec.mode,
-            loss=estimator_spec.loss,
-            train_op=estimator_spec.train_op,
-            eval_metric_ops=estimator_spec.eval_metric_ops,
-            predictions=estimator_spec.predictions,
-            training_hooks=training_hooks
-        )
-        return estimator_spec_with_hooks
-    '''
     params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 1}
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
@@ -283,13 +247,4 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
         predictions = estimator.predict(create_input)
     t2 = datetime.datetime.now()
     predictions = islice(predictions, take_first_n)
-    with open("rtest_expected.pickle", "rb") as expected_file:
-        expected_predictions = pickle.load(expected_file)
-    for prediction, expected in zip(predictions, expected_predictions):
-        print(prediction)
-        assert (prediction["predictions_ids"][:,0]==expected["predicted_word_id"]).all()
-        assert (prediction["predictions_tokens"][:,0]==expected["predicted_word"]).all()
-        assert (expected["probabilities"] == expected["probabilities"]).all()
-    print("start:", t1)
-    print("stop:", t2)
-    print("duration:", t2-t1)
+    return predictions
