@@ -233,7 +233,6 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
     def create_input():
         return data.load_training_data()
 
-    params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 1}
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
 
@@ -246,7 +245,7 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
         config=tf.estimator.RunConfig()
 
         estimator = tf.estimator.Estimator(
-            model, params=params, model_dir=model_dir, config=config)
+            model, model_dir=model_dir, config=config)
         predictions = estimator.predict(create_input)
     predictions = islice(predictions, take_first_n)
     return predictions
