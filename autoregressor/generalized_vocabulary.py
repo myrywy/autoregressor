@@ -88,6 +88,9 @@ class GeneralizedVocabulary:
     def vector_size(self):
         return self._vocab.vector_size() + len(self._special_elements_order)
 
+    def vocab_size(self):
+        return self._vocab.ids_range()[1] + self._offset
+
     def encode_features_op(self):
         special_element_ids = [self._special_elements[special_element_name] for special_element_name in
                                self._special_elements_order]
