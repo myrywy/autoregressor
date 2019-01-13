@@ -5,6 +5,8 @@ import tensorflow as tf
 from lstm_lm import PredictNext
 from utils import maybe_inject_hparams
 
+logger = logging.getLogger(__name__)
+
 class LanguageModel:
     FLOAT_TYPE = tf.float32
     def __init__(self, features, labels, mode, vocabulary_generalized, hparams):
@@ -212,21 +214,24 @@ from corpora_preprocessing.simple_examples import SimpleExamplesCorpus, DatasetT
 from lm_input_data_pipeline import LmInputDataPipeline
 from train_lm_on_simple_examples_and_glove import read_dataset_from_dir 
 from generalized_vocabulary import GeneralizedVocabulary, SpecialUnit
-
+from lm_training_data import LanguageModelTrainingData
 
 
 def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subset, hparams, take_first_n=20):
     glove = Glove300(dry_run=True)
     BATCH_SIZE = 5
 
+    data = LanguageModelTrainingData(
+        vocabulary_name="glove300", 
+        corpus_name="simple_examples", 
+        cached_data_dir=data_dir, 
+        batch_size=BATCH_SIZE, 
+        shuffle_examples_buffer_size=None, 
+        hparams=hparams)
+    
+
     def create_input():
-        input_pipe = LmInputDataPipeline(glove, 5)
-        embedding_size = LmInputDataPipeline(glove, None)._vocab_generalized.vector_size()
-        train_data = read_dataset_from_dir(data_dir, subset, embedding_size)
-        if take_first_n is not None:
-            train_data = train_data.take(take_first_n)
-        train_data = input_pipe.padded_batch(train_data, BATCH_SIZE)
-        return train_data
+        return data.load_training_data()
 
     params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 1}
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
@@ -237,14 +242,11 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
     
     with tf.device("/device:CPU:0"):
         model = LanguageModelCallable(generalized, hparams)
-    config=tf.estimator.RunConfig()
+        
+        config=tf.estimator.RunConfig()
 
-    with tf.device("/device:CPU:0"):
         estimator = tf.estimator.Estimator(
             model, params=params, model_dir=model_dir, config=config)
-    t1 = datetime.datetime.now()
-    with tf.device("/device:CPU:0"):
         predictions = estimator.predict(create_input)
-    t2 = datetime.datetime.now()
     predictions = islice(predictions, take_first_n)
     return predictions
