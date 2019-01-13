@@ -5,6 +5,10 @@ import pickle
 from lm_training_process import eval_lm_on_cached_simple_examples_with_glove_check
 from hparams import hparams
 
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+
 class RTestMode:
     UPDATE = "update"
     CHECK = "check"
@@ -33,14 +37,11 @@ if __name__ == "__main__":
             assert (prediction["predictions_ids"]==expected["predictions_ids"]).all()
             assert (prediction["predictions_tokens"]==expected["predictions_tokens"]).all()
             assert (prediction["probabilities"] == expected["probabilities"]).all()
-        logging.info("Compared {} examples; results are the same".format(i))
-        print("Compared {} examples; results are the same".format(i))
+        logger.info("Compared {} examples; results are the same".format(i))
     
     if args.mode == RTestMode.UPDATE:
         predictions = eval_lm_on_cached_simple_examples_with_glove_check(args.cached_dataset_dir, args.model_dir, "train", hparams)
         predictions = [*predictions]
         with open(RESULTS_FILE_PATH, "wb") as expected_file:
             pickle.dump(predictions, expected_file)
-        logging.info("Model's output saved in {}".format(RESULTS_FILE_PATH))
-        print("Model's output saved in {}".format(RESULTS_FILE_PATH))
-
+        logger.info("Model's output saved in {}".format(RESULTS_FILE_PATH))
