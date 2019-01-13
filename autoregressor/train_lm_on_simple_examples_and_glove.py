@@ -6,6 +6,7 @@ from pathlib import Path
 from itertools import count, repeat, islice
 from collections import namedtuple
 import contextlib
+import pickle
 
 import tensorflow as tf
 import numpy as np
@@ -370,7 +371,9 @@ def eval_lm_on_cached_simple_examples_with_glove(data_dir, model_dir, subset, hp
     t1 = datetime.datetime.now()
     predictions = estimator.predict(create_input)
     t2 = datetime.datetime.now()
-    predictions = islice(predictions, take_first_n)
+    predictions = [*islice(predictions, take_first_n)]
+    with open("rtest_expected.pickle", "wb") as file_expected:
+        pickle.dump(predictions, file_expected)
     for prediction in predictions:
         print(prediction)
     print("start:", t1)
@@ -596,6 +599,11 @@ if __name__ == "__main__":
         if args.hparams:
             hparams.parse(args.hparams)
         eval_lm_on_cached_simple_examples_with_glove(args.cached_dataset_dir, args.model_dir, "train", hparams)
+    elif args.mode == "predict_with_lm_training_process":
+        from lm_training_process import eval_lm_on_cached_simple_examples_with_glove_check
+        if args.hparams:
+            hparams.parse(args.hparams)
+        eval_lm_on_cached_simple_examples_with_glove_check(args.cached_dataset_dir, args.model_dir, "train", hparams)
     elif args.mode == "disambiguate":
         if args.hparams:
             hparams.parse(args.hparams)

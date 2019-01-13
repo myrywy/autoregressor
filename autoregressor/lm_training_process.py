@@ -7,16 +7,15 @@ from utils import maybe_inject_hparams
 
 class LanguageModel:
     FLOAT_TYPE = tf.float32
-    def __init__(self, features, labels, mode, hparams):
+    def __init__(self, features, labels, mode, vocabulary_generalized, hparams):
         self.hparams = hparams
         
         self.time_major_optimization = None
         self.mask_padding_cost = None
         self.dynamic_rnn_swap_memory = None
-        self.num_units = None
-        self.num_layers = None
-        self.vocab_size = None
-        self.last_layer_num_units = None
+        self.rnn_num_units = None
+        self.rnn_num_layers = None
+        self.rnn_last_layer_num_units = None
         self.learning_rate = None
         self.predict_top_k = None
         self.words_as_text_preview = None
@@ -28,10 +27,9 @@ class LanguageModel:
                 "time_major_optimization", 
                 "mask_padding_cost", 
                 "dynamic_rnn_swap_memory",
-                "num_units",
-                "num_layers",
-                "vocab_size",
-                "last_layer_num_units",
+                "rnn_num_units",
+                "rnn_num_layers",
+                "rnn_last_layer_num_units",
                 "learning_rate",
                 "predict_top_k",
                 "words_as_text_preview"
@@ -39,7 +37,8 @@ class LanguageModel:
             )
         
         # TODO: this should probably be factored out of this class
-        self.vocabulary_generalized = None
+        self.vocabulary_generalized = vocabulary_generalized
+        self.vocab_size = vocabulary_generalized.vocab_size() - 3 # THIS -3 is for regression test only; there was bug in previous version so...
 
         self.mode = mode
 
@@ -56,7 +55,6 @@ class LanguageModel:
 
     def build_graph(self):
         self.logits, _ = self.unrolled_rnn(self.inputs, self.lengths)
-        self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
         self.probabilities = self.probabilities_fn(self.logits)
         self.predictions_ids = self.make_predictions(self.logits)
         tf.summary.tensor_summary("top_k_predictions_ids", self.predictions_ids)
@@ -64,6 +62,7 @@ class LanguageModel:
             self.predictions_tokens = self.predictions_ids_to_tokens(self.predictions_ids)
             tf.summary.text("top_k_predictions", self.predictions_tokens)
         if self.mode != tf.estimator.ModeKeys.PREDICT:
+            self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
             self.train_op = self.optimize(self.loss)
             self.position_of_true_word = self.score_of_true_word_fn(self.logits, self.targets)
             tf.summary.tensor_summary("position_of_true_word", self.position_of_true_word)
@@ -155,7 +154,7 @@ class LanguageModel:
 
     def cell(self):
         cell = PredictNext(
-            self.num_units, self.num_layers, self.vocab_size, last_layer_num_units=self.last_layer_num_units, hparam=self.hparams)
+            self.rnn_num_units, self.rnn_num_layers, self.vocab_size, last_layer_num_units=self.rnn_last_layer_num_units)
         return cell
 
     def optimize(self, loss):
@@ -174,73 +173,123 @@ class LanguageModel:
     def estimator_spec(self):
         if not self.graph_build:
             self.build_graph()
-        return tf.estimator.EstimatorSpec(
-            self.mode,
-            predictions=self.predictions,
-            loss=self.loss,
-            train_op=self.train_op,
-            eval_metric_ops=self.metrics,
-        )
+        predictions = {"probabilities": self.probabilities, "predictions_ids": self.predictions_ids}
+        if self.words_as_text_preview:
+            predictions["predictions_tokens"] = self.predictions_tokens
+        if self.mode == tf.estimator.ModeKeys.PREDICT:
+            return tf.estimator.EstimatorSpec(
+                self.mode,
+                predictions=predictions,
+            )
+        else:
+            return tf.estimator.EstimatorSpec(
+                self.mode,
+                predictions=predictions,
+                loss=self.loss,
+                train_op=self.train_op,
+                eval_metric_ops=self.metrics,
+            )
 
 
 class LanguageModelCallable:
+    def __init__(self, vocabulary_generalized, hparams):
+        self.hparams = hparams
+        self.vocabulary_generalized = vocabulary_generalized
+
+    def __call__(self, features, labels, mode, params):
+        model = LanguageModel(features, labels, mode, self.vocabulary_generalized, self.hparams)
+        return model.estimator_spec()
 
 
-    def model_function(features, labels, mode, params):
 
-        if hparams is not None:
-            num_units = hparams.rnn_num_units
-            num_layers = hparams.rnn_num_layers
-            last_layer_num_units = hparams.rnn_last_layer_num_units
-            predictor = PredictNext(num_units, num_layers, vocab_size,
-                                    last_layer_num_units=last_layer_num_units, rnn_cell_type=hparams.rnn_layer)
-        else:
-            num_units = NUM_UNITS
-            num_layers = NUM_LAYERS
-            last_layer_num_units = None
+
+from itertools import islice
+import datetime
+import pickle
+
+from vocabularies_preprocessing.glove300d import Glove300
+from corpora_preprocessing.simple_examples import SimpleExamplesCorpus, DatasetType
+from lm_input_data_pipeline import LmInputDataPipeline
+from train_lm_on_simple_examples_and_glove import read_dataset_from_dir 
+from generalized_vocabulary import GeneralizedVocabulary, SpecialUnit
+
+
+
+def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subset, hparams, take_first_n=20):
+    glove = Glove300(dry_run=True)
+    BATCH_SIZE = 5
+
+    def create_input():
+        input_pipe = LmInputDataPipeline(glove, 5)
+        embedding_size = LmInputDataPipeline(glove, None)._vocab_generalized.vector_size()
+        train_data = read_dataset_from_dir(data_dir, subset, embedding_size)
+        if take_first_n is not None:
+            train_data = train_data.take(take_first_n)
+        train_data = input_pipe.padded_batch(train_data, BATCH_SIZE)
+        return train_data
+
+    '''def model_function(features, labels, mode, params):
+        input_pipe = LmInputDataPipeline(glove)
+        vocab_size = glove.vocab_size()
+        embedding_size = input_pipe._vocab_generalized.vector_size()
+        id_to_embeding_fn = input_pipe.get_id_to_embedding_mapping() if mode == tf.estimator.ModeKeys.PREDICT else lambda x: tf.zeros((tf.shape(x), embedding_size), tf.float32)
+        #with tf.device(device_assignment_function) if hparams.size_based_device_assignment else without:
+        with tf.device("/device:CPU:0"):
+            concrete_model_fn = get_autoregressor_model_fn(
+                    vocab_size, id_to_embeding_fn, time_major_optimization=True, predict_as_pure_lm=True, hparams=hparams)
+            estimator_spec = concrete_model_fn(features, labels, mode, params)
+        training_hooks = []
+        predictions = estimator_spec.predictions
         if mode == tf.estimator.ModeKeys.PREDICT:
-            sentence, length = features["inputs"], features["length"]
-            if time_major_optimization:
-                sentence = tf.transpose(sentence, (1, 0, 2))
-            logits, state = tf.nn.dynamic_rnn(predictor, sentence,
-                                              sequence_length=length,
-                                              dtype=tf.float32,
-                                              time_major=time_major_optimization,
-                                              swap_memory=True)
-            probabilities = tf.nn.softmax(logits=logits)
-            if time_major_optimization:
-                probabilities = tf.transpose(probabilities, (1, 0, 2))
-            predicted_word_id = tf.argmax(probabilities, 2)
-            spec = tf.estimator.EstimatorSpec(
-                mode=mode,
-                predictions={
-                    "predicted_word_id": predicted_word_id,
-                    "probabilities": probabilities
-                })
-        else:
+            training_hooks.append(InitializeVocabularyHook(glove))
 
-            sentence, length = features["inputs"], features["length"]
-            targets = labels["targets"]
+            predicted_ids = predictions["predicted_word_id"]
+            words_shape = tf.shape(predicted_ids)
+            to_vocab_id = input_pipe._vocab_generalized.generalized_id_to_vocab_id()
+            to_word = glove.id_to_word_op()
+            predicted_ids = tf.reshape(predicted_ids, shape=[-1])
+            predicted_words = to_word(to_vocab_id(predicted_ids))
+            predicted_words = tf.reshape(predicted_words, shape=words_shape)
+            predictions["predicted_word"] = predicted_words
+        if hparams.profiler:
+            training_hooks.append(tf.train.ProfilerHook(output_dir=model_dir, save_secs=30, show_memory=True))
+            training_hooks.append(FullLogHook())
+        estimator_spec_with_hooks = tf.estimator.EstimatorSpec(
+            mode=estimator_spec.mode,
+            loss=estimator_spec.loss,
+            train_op=estimator_spec.train_op,
+            eval_metric_ops=estimator_spec.eval_metric_ops,
+            predictions=estimator_spec.predictions,
+            training_hooks=training_hooks
+        )
+        return estimator_spec_with_hooks
+    '''
+    params = {"learning_rate": hparams.learning_rate, "number_of_alternatives": 1}
+    #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
+    #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
 
-            masked_cross_entropy = self.masked_cross_entropy(targets, labels, length)
+    specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
+    generalized = GeneralizedVocabulary(glove, specials)
+    
+    with tf.device("/device:CPU:0"):
+        model = LanguageModelCallable(generalized, hparams)
+    config=tf.estimator.RunConfig()
 
-            if hparams.mask_padding_cost == True:
-                cross_entropy = cross_entropy * cost_mask
-
-            loss = tf.reduce_mean(cross_entropy)
-
-            probabilities = tf.nn.softmax(logits=logits)
-            predicted_word = tf.argmax(probabilities, 2)
-
-            metrics = {
-                # "cross_entropy": cross_entropy,
-                "accuracy": tf.metrics.accuracy(targets, predicted_word)
-            }
-
-            # Wrap all of this in an EstimatorSpec.
-            spec = tf.estimator.EstimatorSpec(
-                mode=mode,
-                loss=loss,
-                train_op=train_op,
-                eval_metric_ops=metrics
-            )
+    with tf.device("/device:CPU:0"):
+        estimator = tf.estimator.Estimator(
+            model, params=params, model_dir=model_dir, config=config)
+    t1 = datetime.datetime.now()
+    with tf.device("/device:CPU:0"):
+        predictions = estimator.predict(create_input)
+    t2 = datetime.datetime.now()
+    predictions = islice(predictions, take_first_n)
+    with open("rtest_expected.pickle", "rb") as expected_file:
+        expected_predictions = pickle.load(expected_file)
+    for prediction, expected in zip(predictions, expected_predictions):
+        print(prediction)
+        assert (prediction["predictions_ids"][:,0]==expected["predicted_word_id"]).all()
+        assert (prediction["predictions_tokens"][:,0]==expected["predicted_word"]).all()
+        assert (expected["probabilities"] == expected["probabilities"]).all()
+    print("start:", t1)
+    print("stop:", t2)
+    print("duration:", t2-t1)
