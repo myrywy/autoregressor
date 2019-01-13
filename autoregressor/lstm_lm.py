@@ -162,12 +162,14 @@ def get_autoregressor_model_fn(
             num_units = hparams.rnn_num_units
             num_layers = hparams.rnn_num_layers
             last_layer_num_units = hparams.rnn_last_layer_num_units
+            mask_padding_cost = hparams.mask_padding_cost
             predictor = PredictNext(num_units, num_layers, vocab_size,
                                     last_layer_num_units=last_layer_num_units, rnn_cell_type=hparams.rnn_layer)
         else:
             num_units = NUM_UNITS
             num_layers = NUM_LAYERS
             last_layer_num_units = None
+            mask_padding_cost = False
             predictor = PredictNext(
                 num_units, num_layers, vocab_size, last_layer_num_units=last_layer_num_units)
 
@@ -241,7 +243,7 @@ def get_autoregressor_model_fn(
             cross_entropy = tf.nn.sparse_softmax_cross_entropy_with_logits(labels=targets,
                                                                            logits=logits)
 
-            if hparams.mask_padding_cost == True:
+            if mask_padding_cost == True:
                 cross_entropy = cross_entropy * cost_mask
 
             loss = tf.reduce_mean(cross_entropy)

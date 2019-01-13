@@ -122,7 +122,7 @@ def hparams():
 )
 def test_maybe_transpose_batch_time(hparams, time_major_optimization, inputs, targets, length, expected_inputs, expected_targets):
     hparams.set_hparam("time_major_optimization", time_major_optimization)
-    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, None, hparams)
     inputs = tf.convert_to_tensor(inputs, dtype=tf.float32)
     targets = tf.convert_to_tensor(targets, dtype=tf.int32)
     t_inputs, t_targets = lm.maybe_transpose_batch_time(inputs, targets)
@@ -202,7 +202,7 @@ def test_cross_entropy_fn__without_mask(hparams, targets, logits, length, expect
     ])
     targets, logits, length = tf.convert_to_tensor(targets, dtype=tf.int32), tf.convert_to_tensor(logits, dtype=tf.float32), tf.convert_to_tensor(length)
     hparams.set_hparam("mask_padding_cost", False)
-    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, None, hparams)
     t_cross_entropy = lm.cross_entropy_fn(targets, logits, length)
     with tf.Session() as sess:
         r_cross_entropy = sess.run(t_cross_entropy)
@@ -303,7 +303,7 @@ def test_cross_entropy_fn__with_mask_and_batch_major(hparams, targets, logits, l
     targets, logits, length = tf.convert_to_tensor(targets, dtype=tf.int32), tf.convert_to_tensor(logits, dtype=tf.float32), tf.convert_to_tensor(length)
     hparams.set_hparam("mask_padding_cost", True)
     hparams.set_hparam("time_major_optimization", False)
-    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, None, hparams)
     t_cross_entropy = lm.cross_entropy_fn(targets, logits, length)
     with tf.Session() as sess:
         r_cross_entropy = sess.run(t_cross_entropy)
@@ -446,7 +446,7 @@ def test_cross_entropy_fn__with_mask_and_time_major(hparams, targets, logits, le
     targets, logits, length = tf.convert_to_tensor(targets, dtype=tf.int32), tf.convert_to_tensor(logits, dtype=tf.float32), tf.convert_to_tensor(length)
     hparams.set_hparam("mask_padding_cost", True)
     hparams.set_hparam("time_major_optimization", True)
-    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    lm = LanguageModel({"inputs": inputs, "length": length}, {"targets": targets}, tf.estimator.ModeKeys.TRAIN, None, hparams)
     t_cross_entropy = lm.cross_entropy_fn(targets, logits, length)
     t_loss = lm.loss_fn(targets, logits, length)
     with tf.Session() as sess:
@@ -935,7 +935,7 @@ def test_metrics(hparams, targets, logits, length, expected_cross_entropy, expec
     
     hparams.set_hparam("mask_padding_cost", True)
     hparams.set_hparam("time_major_optimization", True)
-    lm = LanguageModel({"inputs": inputs, "length": t_length}, {"targets": t_targets}, tf.estimator.ModeKeys.TRAIN, hparams)
+    lm = LanguageModel({"inputs": inputs, "length": t_length}, {"targets": t_targets}, tf.estimator.ModeKeys.TRAIN, None, hparams)
     lm.logits = t_logits
     lm.position_of_true_word = tf.constant(
             np.array(

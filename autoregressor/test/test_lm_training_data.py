@@ -25,6 +25,6 @@ def test_regression_load_training_data():
         expected = pickle.load(rtest_expected)
 
     for (actual_features, actual_labels), (expected_features, expected_labels) in zip(actual, expected):
-        assert actual_features["inputs"] == approx(expected_features["inputs"])
+        assert (actual_features["inputs"] == expected_features["inputs"]).all()
         assert (actual_features["length"] == expected_features["length"]).all()
         assert (actual_labels["targets"] == expected_labels["targets"]).all()
