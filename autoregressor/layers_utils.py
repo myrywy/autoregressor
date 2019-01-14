@@ -41,7 +41,17 @@ class AffineProjectionLayer(tf.keras.layers.Layer):
         self.b = self.add_variable("b", (output_size), dtype, trainable=True, initializer=b_initializer)
 
     def call(self, input):
-        return tf.nn.xw_plus_b(input, self.w, self.b)
+        if len(input.shape) <= 2:
+            return tf.nn.xw_plus_b(input, self.w, self.b)
+        else:
+            original_dims = tf.shape(input)
+            last_dim = original_dims[-1]
+            head_dims = original_dims[:-1]
+            output_dims = tf.concat((head_dims, [self._output_size]), axis=0)
+            input_flat = tf.reshape(input, (-1, last_dim))
+            output_flat = tf.nn.xw_plus_b(input_flat, self.w, self.b)
+            output = tf.reshape(output_flat, output_dims)
+            return output
 
     @property
     def output_size(self):
