@@ -18,7 +18,11 @@ hparams = HParams(
     write_target_text_to_summary=False,
     mask_padding_cost=True,
     dynamic_rnn_swap_memory=True,
-    predict_top_k=1,
+    predict_top_k=2,
     words_as_text_preview=True,
     time_major_optimization=True,
+
+    # these are only effective when training via lm_training_process
+    vocabulary_name="glove300",
+    corpus_name="simple_examples",
 )

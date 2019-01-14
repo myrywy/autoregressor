@@ -1,4 +1,5 @@
 import logging
+import datetime
 
 import tensorflow as tf
 
@@ -73,19 +74,31 @@ class LanguageModel:
                 self.predictions_ids = tf.transpose(self.predictions_ids, (1,0,2))
                 if self.words_as_text_preview:
                     self.predictions_tokens = tf.transpose(self.predictions_tokens, (1,0,2))
-            tf.summary.tensor_summary("top_k_predictions_ids", self.predictions_ids)
-            if self.words_as_text_preview:
-                tf.summary.text("top_k_predictions", self.predictions_tokens)
+            self.create_summaries_predicted()
             if self.mode != tf.estimator.ModeKeys.PREDICT:
                 self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
                 self.train_op = self.optimize(self.loss)
                 self.position_of_true_word = self.score_of_true_word_fn(self.logits, self.targets)
-                tf.summary.tensor_summary("position_of_true_word", self.position_of_true_word)
-                self.mean_position_of_true_word = tf.reduce_mean(self.position_of_true_word)
-                tf.summary.scalar("mean_position_of_true_word", self.position_of_true_word)
+                tf.summary.text("position_of_true_word", tf.as_string(self.position_of_true_word))
+                self.mean_position_of_true_word = tf.reduce_mean(
+                        tf.to_float(
+                            self.position_of_true_word
+                        )
+                    )
+                tf.summary.scalar("mean_position_of_true_word", self.mean_position_of_true_word)
                 tf.summary.scalar("batch_perplexity", self.perplexity_from_loss(self.loss))
                 self.set_metrics()
             self.graph_build = True
+
+    def create_summaries_predicted(self):
+        for i in range(self.predict_top_k):
+            #import pdb;pdb.set_trace()
+            tf.summary.tensor_summary("{}-th_predictions_ids".format(i+1), self.predictions_ids[:,:,i])
+        
+        if self.words_as_text_preview:
+            for i in range(self.predict_top_k):
+                tf.summary.text("{}-th_predictions".format(i+1), self.predictions_tokens[:,:,i])
+
 
     def get_device_context_manager(self):
         if self.size_based_device_assignment:
@@ -110,7 +123,6 @@ class LanguageModel:
         self.metrics = {
             "position_of_true_word": self.position_of_true_word_metric,
             "log_perplexity": (self.log_perplexity_metric, self.log_perplexity_metric_update_op),
-            "perplexity": (self.perplexity_metric, None),
         }        
 
     def score_of_true_word_fn(self, logits, targets):
@@ -211,8 +223,8 @@ class LanguageModel:
         else:
             return tf.estimator.EstimatorSpec(
                 self.mode,
-                predictions=predictions,
-                loss=self.loss if mode == tf.estimator.ModeKeys.EVAL else None,
+                predictions=predictions if self.mode == tf.estimator.ModeKeys.EVAL else None,
+                loss=self.loss,
                 train_op=self.train_op,
                 eval_metric_ops=self.metrics,
             )
@@ -244,9 +256,8 @@ from vocabulary_factory import get_vocabulary
 
 
 def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subset, hparams, take_first_n=20):
-    #glove = Glove300(dry_run=True)
-    glove = get_vocabulary("glove300")
-
+    vocabulary = get_vocabulary("glove300")
+    
     data = LanguageModelTrainingData(
         vocabulary_name="glove300", 
         corpus_name="simple_examples", 
@@ -263,7 +274,7 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
     #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
 
     #specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
-    generalized = LMGeneralizedVocabulary(glove)
+    generalized = LMGeneralizedVocabulary(vocabulary)
     
     with tf.device("/device:CPU:0"):
         model = LanguageModelCallable(generalized, hparams)
@@ -275,3 +286,57 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
         predictions = estimator.predict(create_input)
     predictions = islice(predictions, take_first_n)
     return predictions
+
+def train_and_eval(data_dir, model_dir, hparams):
+    vocabulary = get_vocabulary(hparams.vocabulary_name)
+
+    data = LanguageModelTrainingData(
+        vocabulary_name=hparams.vocabulary_name, 
+        corpus_name=hparams.corpus_name, 
+        cached_data_dir=data_dir, 
+        batch_size=hparams.batch_size, 
+        shuffle_examples_buffer_size=hparams.shuffle_examples_buffer_size, 
+        hparams=hparams)
+
+    def create_input():
+        return data.load_training_data()
+
+    generalized = LMGeneralizedVocabulary(vocabulary)
+
+    config = tf.estimator.RunConfig(
+            save_summary_steps=3,
+            #save_checkpoints_secs=5*60,
+            save_checkpoints_steps=2,
+            session_config=None,
+            keep_checkpoint_max=5,
+            keep_checkpoint_every_n_hours=10000,
+            log_step_count_steps=1,
+        )
+    model = LanguageModelCallable(generalized, hparams)
+    estimator = tf.estimator.Estimator(model, model_dir=model_dir, config=config)
+
+    t1 = datetime.datetime.now()
+    estimator.train(create_input, max_steps=hparams.max_training_steps)
+    t2 = datetime.datetime.now()
+
+    logger.info("start: {}".format(t1))
+    logger.info("stop: {}".format(t2))
+    logger.info("duration: {}".format(t2-t1))
+
+
+if __name__ == "__main__":
+    import argparse
+    from hparams import hparams
+
+    parser = argparse.ArgumentParser()
+    parser.add_argument("model_dir")
+    parser.add_argument("cached_dataset_dir")
+    parser.add_argument('--hparams', type=str,
+                    help='Comma separated list of "name=value" pairs.')
+    args = parser.parse_args()
+
+
+    if args.hparams:
+        hparams.parse(args.hparams)
+    logger.info("Running with parameters: {}".format(hparams.to_json()))
+    train_and_eval(args.cached_dataset_dir, args.model_dir, hparams)
