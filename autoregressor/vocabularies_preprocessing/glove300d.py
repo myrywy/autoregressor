@@ -106,7 +106,8 @@ class Glove300(Vocabulary):
     def after_session_created_hook_fn(self, session, graph=None):
         if graph is None:
             graph = tf.get_default_graph()
-        self.initialize_embeddings_in_graph(graph, session)
+        if len(self._embedding_assigns[graph]):
+            self.initialize_embeddings_in_graph(graph, session)
 
 
 def get_words_to_id_op():
