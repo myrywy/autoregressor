@@ -1,4 +1,5 @@
 import logging
+import datetime
 
 import tensorflow as tf
 
@@ -101,3 +102,9 @@ class without_context_manager:
     def __exit__(self, exc_type, exc_value, traceback):
         pass
 without = without_context_manager()
+
+
+def now_time_stirng():
+    now = datetime.datetime.now()
+    return now.strftime("%Y%m%d_%H-%M")
+    
