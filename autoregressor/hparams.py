@@ -10,7 +10,7 @@ hparams = HParams(
     rnn_layer="lstm_block_cell",
     profiler=False,
     size_based_device_assignment=False,
-    device="CPU",   # "CPU", "GPU" or ""
+    device="",   # "CPU", "GPU" or ""
     batch_size=5,
     shuffle_examples_buffer_size=1000,
     shuffle_examples_seed=0,
@@ -21,6 +21,8 @@ hparams = HParams(
     predict_top_k=2,
     words_as_text_preview=True,
     time_major_optimization=True,
+
+    use_cudnn_rnn=True,
 
     # these are only effective when training via lm_training_process
     vocabulary_name="glove300",

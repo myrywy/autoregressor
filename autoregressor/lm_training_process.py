@@ -6,6 +6,9 @@ import tensorflow as tf
 from lstm_lm import PredictNext
 from utils import maybe_inject_hparams, without
 
+
+from tensorflow.contrib.cudnn_rnn import CudnnLSTM 
+
 logger = logging.getLogger(__name__)
 
 class LanguageModel:
@@ -24,6 +27,7 @@ class LanguageModel:
         self.words_as_text_preview = None
         self.size_based_device_assignment = None
         self.device = None
+        self.use_cudnn_rnn = None
         
         maybe_inject_hparams(
             self, 
@@ -40,12 +44,13 @@ class LanguageModel:
                 "words_as_text_preview",
                 "size_based_device_assignment",
                 "device",
+                "use_cudnn_rnn"
                 ]
             )
         
         # TODO: this should probably be factored out of this class
         self.vocabulary_generalized = vocabulary_generalized
-        self.vocab_size = vocabulary_generalized.vocab_size() - 3 if vocabulary_generalized is not None else None # THIS -3 is for regression test only; there was bug in previous version so...
+        self.vocab_size = vocabulary_generalized.vocab_size() if vocabulary_generalized is not None else None # THIS -3 is for regression test only; there was bug in previous version so...
 
         self.mode = mode
 
@@ -184,11 +189,18 @@ class LanguageModel:
         return inputs, targets
 
     def unrolled_rnn(self, inputs, lengths):
-        logits, state = tf.nn.dynamic_rnn(self.cell(), inputs,
-                                            sequence_length=lengths,
-                                            dtype=self.FLOAT_TYPE,
-                                            time_major=self.time_major_optimization,
-                                            swap_memory=self.dynamic_rnn_swap_memory)
+        if not self.use_cudnn_rnn:
+            logits, state = tf.nn.dynamic_rnn(self.cell(), inputs,
+                                                sequence_length=lengths,
+                                                dtype=self.FLOAT_TYPE,
+                                                time_major=self.time_major_optimization,
+                                                swap_memory=self.dynamic_rnn_swap_memory)
+        else:
+            rnn = CudnnLSTM(self.rnn_num_layers, self.rnn_num_units)
+            from layers_utils import AffineProjectionLayer
+            proj = AffineProjectionLayer(self.rnn_num_units, self.vocab_size, self.FLOAT_TYPE)
+            out, state = rnn(inputs)
+            logits = proj(out)
         return logits, state
 
     def cell(self):
@@ -256,24 +268,19 @@ from vocabulary_factory import get_vocabulary
 
 
 def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subset, hparams, take_first_n=20):
-    vocabulary = get_vocabulary("glove300")
+    vocabulary = get_vocabulary(hparams.vocabulary_name)
     
     data = LanguageModelTrainingData(
-        vocabulary_name="glove300", 
-        corpus_name="simple_examples", 
+        vocabulary_name=hparams.vocabulary_name, 
+        corpus_name=hparams.corpus_name, 
         cached_data_dir=data_dir, 
         batch_size=hparams.batch_size, 
         shuffle_examples_buffer_size=None, 
         hparams=hparams)
     
-
     def create_input():
         return data.load_training_data()
 
-    #config=tf.estimator.RunConfig(session_config=tf.ConfigProto(log_device_placement=False))
-    #config=tf.estimator.RunConfig(session_config=tf.ConfigProto())
-
-    #specials = [SpecialUnit.OUT_OF_VOCABULARY, SpecialUnit.START_OF_SEQUENCE, SpecialUnit.END_OF_SEQUENCE]
     generalized = LMGeneralizedVocabulary(vocabulary)
     
     with tf.device("/device:CPU:0"):
@@ -304,13 +311,13 @@ def train_and_eval(data_dir, model_dir, hparams):
     generalized = LMGeneralizedVocabulary(vocabulary)
 
     config = tf.estimator.RunConfig(
-            save_summary_steps=3,
-            #save_checkpoints_secs=5*60,
-            save_checkpoints_steps=2,
+            save_summary_steps=500,
+            save_checkpoints_secs=30*60,
+            #save_checkpoints_steps=2,
             session_config=None,
-            keep_checkpoint_max=5,
+            keep_checkpoint_max=10,
             keep_checkpoint_every_n_hours=10000,
-            log_step_count_steps=1,
+            log_step_count_steps=500,
         )
     model = LanguageModelCallable(generalized, hparams)
     estimator = tf.estimator.Estimator(model, model_dir=model_dir, config=config)
@@ -325,7 +332,9 @@ def train_and_eval(data_dir, model_dir, hparams):
 
 
 if __name__ == "__main__":
+    import os
     import argparse
+    from utils import now_time_stirng
     from hparams import hparams
 
     parser = argparse.ArgumentParser()
@@ -335,8 +344,20 @@ if __name__ == "__main__":
                     help='Comma separated list of "name=value" pairs.')
     args = parser.parse_args()
 
+    tf_log = logging.getLogger('tensorflow')
+    tf_log.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    fh = logging.FileHandler(os.path.join(args.model_dir, 'tensorflow.log'))
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    tf_log.addHandler(fh)
 
     if args.hparams:
         hparams.parse(args.hparams)
+
+    with open(os.path.join(args.model_dir, 'hparams_{}.log'.format(now_time_stirng())), "wt") as hparams_log:
+        hparams_log.write(hparams.to_json())
     logger.info("Running with parameters: {}".format(hparams.to_json()))
     train_and_eval(args.cached_dataset_dir, args.model_dir, hparams)
