@@ -41,6 +41,7 @@ class AffineProjectionLayer(tf.keras.layers.Layer):
         self.b = self.add_variable("b", (output_size), dtype, trainable=True, initializer=b_initializer)
 
     def call(self, input):
+        input = tf.convert_to_tensor(input, self._dtype)
         if len(input.shape) <= 2:
             return tf.nn.xw_plus_b(input, self.w, self.b)
         else:
