@@ -8,8 +8,15 @@ from utils import maybe_inject_hparams, without
 
 
 from tensorflow.contrib.cudnn_rnn import CudnnLSTM 
+from tensorflow.python import debug as tf_debug
 
 logger = logging.getLogger(__name__)
+
+def any_negative_filter_callable(datum, tensor):
+    if datum.tensor_name != "n_score_higher_eq_than_true_one":
+        return False
+    return (tensor <= 0).any()
+
 
 class LanguageModel:
     FLOAT_TYPE = tf.float32
@@ -336,19 +343,27 @@ def train_and_eval(data_dir, model_dir, hparams):
     generalized = LMGeneralizedVocabulary(vocabulary)
 
     config = tf.estimator.RunConfig(
-            save_summary_steps=500,
-            save_checkpoints_secs=30*60,
+            save_summary_steps=hparams.save_summary_steps,
+            save_checkpoints_secs=hparams.save_checkpoints_secs,
             #save_checkpoints_steps=2,
-            session_config=None,
-            keep_checkpoint_max=10,
-            keep_checkpoint_every_n_hours=10000,
-            log_step_count_steps=500,
+            session_config=tf.ConfigProto(log_device_placement=False),
+            keep_checkpoint_max=hparams.keep_checkpoint_max,
+            keep_checkpoint_every_n_hours=hparams.keep_checkpoint_every_n_hours,
+            log_step_count_steps=hparams.log_step_count_steps,
         )
     model = LanguageModelCallable(generalized, hparams)
     estimator = tf.estimator.Estimator(model, model_dir=model_dir, config=config)
 
+    debug_hook = tf_debug.LocalCLIDebugHook()
+    debug_hook.add_tensor_filter("negative_count", any_negative_filter_callable)
+
+    hooks = []
+    if hparams.cli_debug == True:
+        hooks.append(debug_hook)
+
     t1 = datetime.datetime.now()
-    estimator.train(create_input, max_steps=hparams.max_training_steps)
+
+    estimator.train(create_input, max_steps=hparams.max_training_steps, hooks=hooks)
     t2 = datetime.datetime.now()
 
     logger.info("start: {}".format(t1))

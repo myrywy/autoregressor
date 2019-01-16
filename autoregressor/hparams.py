@@ -24,6 +24,14 @@ hparams = HParams(
 
     use_cudnn_rnn=True,
 
+    save_summary_steps=1,
+    keep_checkpoint_max=6,
+    log_step_count_steps=1,
+    keep_checkpoint_every_n_hours=10000,
+    save_checkpoints_secs=30*60,
+
+    cli_debug=False,
+
     # these are only effective when training via lm_training_process
     vocabulary_name="glove300",
     corpus_name="simple_examples",
