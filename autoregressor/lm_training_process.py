@@ -97,7 +97,6 @@ class LanguageModel:
 
     def create_summaries_predicted(self):
         for i in range(self.predict_top_k):
-            #import pdb;pdb.set_trace()
             tf.summary.tensor_summary("{}-th_predictions_ids".format(i+1), self.predictions_ids[:,:,i])
         
         if self.words_as_text_preview:
@@ -136,8 +135,34 @@ class LanguageModel:
         flatten_logits_of_true_words = tf.map_fn((lambda x: tf.gather(x[0], x[1])), [flatten_logits, flatten_targets], dtype=logits.dtype)
         logits_of_true_words = tf.reshape(flatten_logits_of_true_words, tf.shape(targets))
         
-        is_score_higher_eq_than_true_one = tf.greater_equal(logits, tf.expand_dims(logits_of_true_words,-1))
-        n_score_higher_eq_than_true_one = tf.reduce_sum(tf.cast(is_score_higher_eq_than_true_one, tf.int8), axis=-1)
+
+        # Beware! This may not look as the most neat way to count values meeting a condition along a dimension but:
+        # Size of "distribution over vocabulory" dimension may be huge and that takes a lot of memory to be comuted at once
+        # (btw. it may cause overflow if one uses little int type as int16).
+        # On the other hand resulting tensor is relatively small so computation of boolean values and reduction  
+        # is performed in parts.
+        def distribution_to_correct_guess_score(logits_local, logits_of_true_words_local):
+            is_score_higher_eq_than_true_one = tf.greater_equal(logits_local, tf.expand_dims(logits_of_true_words_local,-1))
+            return tf.reduce_sum(tf.cast(is_score_higher_eq_than_true_one, tf.int64), axis=-1, name="count_meeting_condition_reduction")
+
+        if self.device != "GPU":
+            max_prallel_reductions = 5
+
+            n_score_higher_eq_than_true_one = tf.map_fn(
+                lambda x: distribution_to_correct_guess_score(x[0], x[1]), 
+                (logits, logits_of_true_words), 
+                parallel_iterations=max_prallel_reductions, 
+                dtype=tf.int64,
+                name="mapped_n_score_higher_eq_than_true_one",
+                back_prop=False,
+                swap_memory=False,
+                infer_shape=True)
+
+        else:
+            n_score_higher_eq_than_true_one = distribution_to_correct_guess_score(logits, logits_of_true_words)
+
+        n_score_higher_eq_than_true_one = tf.identity(n_score_higher_eq_than_true_one, name="mapped_n_score_higher_eq_than_true_one")
+        
 
         return n_score_higher_eq_than_true_one - 1 # -1 comes from the fact that true index has score equal to true index so it counts to higher-equal
 

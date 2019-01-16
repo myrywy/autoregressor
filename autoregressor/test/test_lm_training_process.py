@@ -495,6 +495,7 @@ def test_cost_mask(lengths, max_length, time_major, expected_mask):
 
     assert (r_mask == expected_mask).all()
 
+@pytest.mark.parametrize("device", ["", "GPU", "CPU"])
 @pytest.mark.parametrize("logits, targets, expected_score",
     [
         (
@@ -614,13 +615,15 @@ def test_cost_mask(lengths, max_length, time_major, expected_mask):
         ),
     ]
 )
-def test_score_of_true_word_fn(logits, targets, expected_score):
+def test_score_of_true_word_fn(device, logits, targets, expected_score):
     t_logits = tf.convert_to_tensor(logits)
     t_targets = tf.convert_to_tensor(targets)
     
-    score_of_true_word_fn = partial(LanguageModel.score_of_true_word_fn, LanguageModel)
+    mockLM = mock.MagicMock()
+    mockLM.device = device
+    mockLM.score_of_true_word_fn = partial(LanguageModel.score_of_true_word_fn, mockLM)
 
-    t_score = score_of_true_word_fn(t_logits, t_targets)
+    t_score = mockLM.score_of_true_word_fn(t_logits, t_targets)
 
     with tf.Session() as sess:
         r_score = sess.run(t_score)
