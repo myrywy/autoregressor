@@ -391,6 +391,22 @@ def train_and_eval(data_dir, model_dir, hparams):
     logger.info("duration: {}".format(t2-t1))
 
 
+def setup_tf_logging(dir_path):
+    tf_log = logging.getLogger('tensorflow')
+    tf_log.setLevel(logging.DEBUG)
+
+    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
+
+    fh = logging.FileHandler(os.path.join(dir_path, 'tensorflow.log'))
+    fh.setLevel(logging.DEBUG)
+    fh.setFormatter(formatter)
+    tf_log.addHandler(fh)
+
+def log_hparams(dir_path):
+    with open(os.path.join(dir_path, 'hparams_{}.log'.format(now_time_stirng())), "wt") as hparams_log:
+        hparams_log.write(hparams.to_json())
+
+
 if __name__ == "__main__":
     import os
     import argparse
@@ -402,22 +418,25 @@ if __name__ == "__main__":
     parser.add_argument("cached_dataset_dir")
     parser.add_argument('--hparams', type=str,
                     help='Comma separated list of "name=value" pairs.')
+    parser.add_argument('--prepare_data', action="store_true")
     args = parser.parse_args()
-
-    tf_log = logging.getLogger('tensorflow')
-    tf_log.setLevel(logging.DEBUG)
-
-    formatter = logging.Formatter('%(asctime)s - %(name)s - %(levelname)s - %(message)s')
-
-    fh = logging.FileHandler(os.path.join(args.model_dir, 'tensorflow.log'))
-    fh.setLevel(logging.DEBUG)
-    fh.setFormatter(formatter)
-    tf_log.addHandler(fh)
-
+    
     if args.hparams:
         hparams.parse(args.hparams)
 
-    with open(os.path.join(args.model_dir, 'hparams_{}.log'.format(now_time_stirng())), "wt") as hparams_log:
-        hparams_log.write(hparams.to_json())
-    logger.info("Running with parameters: {}".format(hparams.to_json()))
-    train_and_eval(args.cached_dataset_dir, args.model_dir, hparams)
+    if args.prepare_data:
+        setup_tf_logging(args.cached_dataset_dir)
+        log_hparams(args.cached_dataset_dir)
+
+        data = LanguageModelTrainingData(
+            vocabulary_name=hparams.vocabulary_name, 
+            corpus_name=hparams.corpus_name, 
+            cached_data_dir=args.cached_dataset_dir, 
+            hparams=hparams)
+        data.prepare_data()
+    else:
+        setup_tf_logging(args.model_dir)
+        log_hparams(args.model_dir)
+
+        logger.info("Running with parameters: {}".format(hparams.to_json()))
+        train_and_eval(args.cached_dataset_dir, args.model_dir, hparams)
