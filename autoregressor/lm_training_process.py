@@ -86,19 +86,23 @@ class LanguageModel:
                 self.predictions_ids = tf.transpose(self.predictions_ids, (1,0,2))
                 if self.words_as_text_preview:
                     self.predictions_tokens = tf.transpose(self.predictions_tokens, (1,0,2))
-            self.create_summaries_predicted()
+            with tf.device("/device:CPU:0"):
+                self.create_summaries_predicted()
+                self.create_summaries_targets()
+                self.create_summaries_inputs()
             if self.mode != tf.estimator.ModeKeys.PREDICT:
                 self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
                 self.train_op = self.optimize(self.loss)
-                self.position_of_true_word = self.score_of_true_word_fn(self.logits, self.targets)
-                tf.summary.text("position_of_true_word", tf.as_string(self.position_of_true_word))
-                self.mean_position_of_true_word = tf.reduce_mean(
-                        tf.to_float(
-                            self.position_of_true_word
+                with tf.device("/device:CPU:0"):
+                    self.position_of_true_word = self.score_of_true_word_fn(self.logits, self.targets)
+                    tf.summary.text("position_of_true_word", tf.as_string(self.position_of_true_word))
+                    self.mean_position_of_true_word = tf.reduce_mean(
+                            tf.to_float(
+                                self.position_of_true_word
+                            )
                         )
-                    )
-                tf.summary.scalar("mean_position_of_true_word", self.mean_position_of_true_word)
-                tf.summary.scalar("batch_perplexity", self.perplexity_from_loss(self.loss))
+                    tf.summary.scalar("mean_position_of_true_word", self.mean_position_of_true_word)
+                    tf.summary.scalar("batch_perplexity", self.perplexity_from_loss(self.loss))
                 self.set_metrics()
             self.graph_build = True
 
@@ -110,6 +114,16 @@ class LanguageModel:
             for i in range(self.predict_top_k):
                 tf.summary.text("{}-th_predictions".format(i+1), self.predictions_tokens[:,:,i])
 
+    def create_summaries_targets(self):
+        targets_flatten = tf.reshape(self.targets, (-1,))
+        targets_shape = tf.shape(self.targets)
+        tokens_flatten = self.vocabulary_generalized.generalized_id_to_token()(targets_flatten)
+        targets_tokens = tf.reshape(tokens_flatten, targets_shape)
+        tf.summary.text("targets_ids", tf.as_string(self.targets))
+        tf.summary.text("targets", targets_tokens)
+
+    def create_summaries_inputs(self):
+        tf.summary.text("inputs_vectors", tf.as_string(tf.squeeze(self.inputs[:,:,:6])))
 
     def get_device_context_manager(self):
         if self.size_based_device_assignment:
