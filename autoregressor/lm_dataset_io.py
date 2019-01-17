@@ -34,7 +34,7 @@ class CachedLmInputDataPipeline(LmInputDataPipeline):
             corpus, 
             make_tf_record_example, 
             writer_manager, 
-            self.vocab.after_create_session_hook_fn)
+            self._vocab.after_session_created_hook_fn)
 
     def load_cached_data(self, subset):
         return read_dataset_from_dir(self.data_dir, subset, self._vocab_generalized.vector_size())
@@ -136,10 +136,10 @@ def save_dataset_to_files(dataset, make_tf_record_example, file_writer_manager, 
     next_example = it.get_next()
 
     with tf.Session() as sess:
+        if custom_initialization_fn is not None:
+            custom_initialization_fn(sess)
         sess.run(tf.tables_initializer())
         sess.run(it.initializer)
-        if custom_initialization_fn:
-            custom_initialization_fn(sess)
 
         with file_writer_manager as writers_manager:
             for i in count():
