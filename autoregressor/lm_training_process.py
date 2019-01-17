@@ -86,11 +86,11 @@ class LanguageModel:
                 self.predictions_ids = tf.transpose(self.predictions_ids, (1,0,2))
                 if self.words_as_text_preview:
                     self.predictions_tokens = tf.transpose(self.predictions_tokens, (1,0,2))
-            with tf.device("/device:CPU:0"):
-                self.create_summaries_predicted()
-                self.create_summaries_targets()
-                self.create_summaries_inputs()
             if self.mode != tf.estimator.ModeKeys.PREDICT:
+                with tf.device("/device:CPU:0"):
+                    self.create_summaries_predicted()
+                    self.create_summaries_targets()
+                    self.create_summaries_inputs()
                 self.loss = self.loss_fn(self.targets, self.logits, self.lengths)
                 self.train_op = self.optimize(self.loss)
                 with tf.device("/device:CPU:0"):
@@ -265,7 +265,7 @@ class LanguageModel:
 
     def max_length(self):
         time_dim = 0 if self.time_major_optimization else 1
-        return tf.shape(self.targets)[time_dim]
+        return tf.shape(self.inputs)[time_dim]
 
     def estimator_spec(self):
         if not self.graph_build:
