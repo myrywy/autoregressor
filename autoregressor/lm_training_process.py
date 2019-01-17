@@ -245,8 +245,11 @@ class LanguageModel:
             rnn = CudnnLSTM(self.rnn_num_layers, self.rnn_num_units)
             from layers_utils import AffineProjectionLayer
             proj = AffineProjectionLayer(self.rnn_num_units, self.vocab_size, self.FLOAT_TYPE)
+            inputs = tf.transpose(inputs, (1,0,2))
             out, state = rnn(inputs)
+            out = tf.transpose(out, (1,0,2))
             logits = proj(out)
+            logits = logits * tf.expand_dims(self.cost_mask(lengths, self.max_length(), False),-1)
         return logits, state
 
     def cell(self):
