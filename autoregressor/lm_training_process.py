@@ -57,7 +57,7 @@ class LanguageModel:
         
         # TODO: this should probably be factored out of this class
         self.vocabulary_generalized = vocabulary_generalized
-        self.vocab_size = vocabulary_generalized.vocab_size() if vocabulary_generalized is not None else None # THIS -3 is for regression test only; there was bug in previous version so...
+        self.vocab_size = vocabulary_generalized.vocab_size() if vocabulary_generalized is not None else None 
 
         self.mode = mode
 
@@ -310,8 +310,14 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
         shuffle_examples_buffer_size=None, 
         hparams=hparams)
     
+    def filter_too_long(features, labels):
+        tf.shape(features)[1] <= hparams.max_input_length
+
     def create_input():
-        return data.load_training_data()
+        input_dataset = data.load_training_data()
+        if hparams.max_input_length > 0:
+            input_dataset = input_dataset.filter(filter_too_long)
+        return input_dataset
 
     generalized = LMGeneralizedVocabulary(vocabulary)
     
