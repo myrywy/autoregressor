@@ -236,7 +236,8 @@ class LanguageModel:
 
     def unrolled_rnn(self, inputs, lengths):
         if not self.use_cudnn_rnn:
-            logits, state = tf.nn.dynamic_rnn(self.cell(), inputs,
+            cell = self.cell()
+            logits, state = tf.nn.dynamic_rnn(cell, inputs,
                                                 sequence_length=lengths,
                                                 dtype=self.FLOAT_TYPE,
                                                 time_major=self.time_major_optimization,
@@ -254,7 +255,7 @@ class LanguageModel:
 
     def cell(self):
         cell = PredictNext(
-            self.rnn_num_units, self.rnn_num_layers, self.vocab_size, last_layer_num_units=self.rnn_last_layer_num_units)
+            self.rnn_num_units, self.rnn_num_layers, self.vocab_size, last_layer_num_units=self.rnn_last_layer_num_units, rnn_cell_type=self.hparams.rnn_cell_type)
         return cell
 
     def optimize(self, loss):
@@ -338,7 +339,7 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
 
     generalized = LMGeneralizedVocabulary(vocabulary)
     
-    with tf.device("/device:CPU:0"):
+    with without: #tf.device("/device:CPU:0"):
         model = LanguageModelCallable(generalized, hparams)
         
         config=tf.estimator.RunConfig()
@@ -349,7 +350,7 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
     predictions = islice(predictions, take_first_n)
     return predictions
 
-def train_and_eval(data_dir, model_dir, hparams):
+def train_and_eval(data_dir, model_dir, hparams, warm_start=None):
     vocabulary = get_vocabulary(hparams.vocabulary_name)
 
     data = LanguageModelTrainingData(
@@ -375,7 +376,8 @@ def train_and_eval(data_dir, model_dir, hparams):
             log_step_count_steps=hparams.log_step_count_steps,
         )
     model = LanguageModelCallable(generalized, hparams)
-    estimator = tf.estimator.Estimator(model, model_dir=model_dir, config=config)
+
+    estimator = tf.estimator.Estimator(model, model_dir=model_dir, config=config, warm_start_from=warm_start)
 
     debug_hook = tf_debug.LocalCLIDebugHook()
     debug_hook.add_tensor_filter("negative_count", any_negative_filter_callable)
@@ -422,6 +424,8 @@ if __name__ == "__main__":
     parser.add_argument('--hparams', type=str,
                     help='Comma separated list of "name=value" pairs.')
     parser.add_argument('--prepare_data', action="store_true")
+    parser.add_argument('--params_from_cudnn_rnn', type=str, 
+                    help="Path to checkpoint from training model using cudnn rnn.")
     args = parser.parse_args()
     
     if args.hparams:
@@ -441,5 +445,24 @@ if __name__ == "__main__":
         setup_tf_logging(args.model_dir)
         log_hparams(args.model_dir)
 
+        warm_start = None
+        if args.params_from_cudnn_rnn is not None:
+            platform_independent_to_cudnn_variables = {
+                "affine_projection_pseudo_cell/w": "affine_projection_layer/w",
+                "affine_projection_pseudo_cell/b": "affine_projection_layer/b",
+                "rnn/predict_next/multi_rnn_cell/cell_0/cudnn_compatible_lstm_cell/kernel": 
+                  "cudnn_lstm/rnn/multi_rnn_cell/cell_0/cudnn_compatible_lstm_cell/kernel",
+                "rnn/predict_next/multi_rnn_cell/cell_0/cudnn_compatible_lstm_cell/bias": 
+                  "cudnn_lstm/rnn/multi_rnn_cell/cell_0/cudnn_compatible_lstm_cell/bias",
+                "rnn/predict_next/multi_rnn_cell/cell_1/cudnn_compatible_lstm_cell/kernel": 
+                  "cudnn_lstm/rnn/multi_rnn_cell/cell_1/cudnn_compatible_lstm_cell/kernel",
+                "rnn/predict_next/multi_rnn_cell/cell_1/cudnn_compatible_lstm_cell/bias": 
+                  "cudnn_lstm/rnn/multi_rnn_cell/cell_1/cudnn_compatible_lstm_cell/bias",
+            }
+            warm_start = tf.estimator.WarmStartSettings(
+                    ckpt_to_initialize_from=args.params_from_cudnn_rnn,
+                    var_name_to_prev_var_name=platform_independent_to_cudnn_variables,
+                )
+
         logger.info("Running with parameters: {}".format(hparams.to_json()))
-        train_and_eval(args.cached_dataset_dir, args.model_dir, hparams)
+        train_and_eval(args.cached_dataset_dir, args.model_dir, hparams, warm_start)

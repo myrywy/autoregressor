@@ -14,6 +14,7 @@ class PredictNext(tf.nn.rnn_cell.RNNCell):
         None: tf.nn.rnn_cell.LSTMCell,
         "lstm": tf.nn.rnn_cell.LSTMCell,
         "lstm_block_cell": tf.contrib.rnn.LSTMBlockCell,
+        "CudnnCompatibleLSTMCell": tf.contrib.cudnn_rnn.CudnnCompatibleLSTMCell
     }
 
     def __init__(self, n_units, n_layers, probability_distribution_size, dtype=tf.float32, last_layer_num_units=None, rnn_cell_type=None, **kwargs):
@@ -25,7 +26,7 @@ class PredictNext(tf.nn.rnn_cell.RNNCell):
         self.rnn_cell_type = PredictNext.rnn_type_names[rnn_cell_type]
 
         # alternatively this could be done via projection_num atgument of last LSTM cell
-
+        
         if self.last_layer_n_units is None:
             projection = AffineProjectionPseudoCell(
                 self.n_units, self.probability_distribution_size, self.dtype)
