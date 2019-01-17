@@ -134,6 +134,18 @@ class Vocabulary(ABC):
         pass
 
     @abstractmethod
+    def get_unknown_word_psudo_id(self):
+        """Returns integer that is returned by word_to_id op when unknown word is encountered.
+        It is not the same as special unit OUT_OF_VOCABULARY. Only if this grammar has a vector for OUT_OF_VOCABULARY
+        then it's id should be returned by special_unit_to_id(SpecialUnit.OUT_OF_VOCABULARY) 
+
+        Returns:
+            int: a value that is not an id recognized by this vocabulary (there is no vector assigned to this "id")
+                that is assigned to unknown words by op redurned by word_to_id_op method.
+        """
+        pass
+
+    @abstractmethod
     def vector_size(self):
         """Returns size of embedding vectors in the vocabulary.
 

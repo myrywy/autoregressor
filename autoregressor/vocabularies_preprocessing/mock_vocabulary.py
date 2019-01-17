@@ -17,9 +17,12 @@ class MockVocab(Vocabulary):
 
         def op(word):
             word = tf.convert_to_tensor(word, dtype=tf.string)
-            return lookup_table.lookup(word)+self.FIRST_ID
+            return lookup_table.lookup(word) + self.FIRST_ID
 
         return op
+
+    def get_unknown_word_psudo_id(self):
+        return self.UNKNOWN_WORD_ID
 
     def id_to_word_op(self):
         lookup_table = tf.contrib.lookup.index_to_string_table_from_tensor(self.tokens, name="MockVocab_id_to_word_lookup")
@@ -59,6 +62,6 @@ class MockVocab(Vocabulary):
         return 4
     
     def ids_range(self):
-        return self.FIRST_ID, self.FIRST_ID + self.vocab_size() - 1
+        return self.FIRST_ID, self.UNKNOWN_WORD_ID
 
     

@@ -1,5 +1,6 @@
-from generalized_vocabulary import GeneralizedVocabulary, SpecialUnit
+from generalized_vocabulary import GeneralizedVocabulary, SpecialUnit, LMGeneralizedVocabulary
 from vocabularies_preprocessing.mock_vocabulary import MockVocab
+from vocabulary_factory import get_vocabulary
 
 import tensorflow as tf
 import numpy as np
@@ -336,3 +337,95 @@ def test_generalized_id_to_extended_vector(special_units_all, vocab_type, genera
         r_vector = sess.run(t_vector)
 
     assert r_vector == approx(np.array(expected_output))
+
+    with tf.Session() as sess:
+        sess.run(tf.tables_initializer())
+        r_vector = sess.run(t_vector)
+
+    assert r_vector == approx(np.array(expected_output))
+
+
+@pytest.mark.parametrize("vocab_type, generalized_id, expected_output",
+    [
+        (MockVocab, [1,2,4,5,6,7], [
+            [1.0,0,0,0,0,0],
+            [0.1,0,0,0,0,0],
+            [0.0,0,0,1.5,2.5,3.5],
+            [0.0,0,0,4.5,5.5,6.5],
+            [0.0,0,0,7.5,8.5,9.5],
+            [0.0,0,1,0,0,0],
+        ]),
+        (MockVocab, [1], [[1.0,0,0,0,0,0]]),
+        (MockVocab, [4], [[0.0,0,0,1.5,2.5,3.5]]),
+        (MockVocab, [7], [[0.0,0,1,0,0,0]]),
+    ]
+)
+def test_LMGeneralizedVocabulary__generalized_id_to_extended_vector(special_units_all, vocab_type, generalized_id, expected_output):
+    vocab = vocab_type()
+    generalized_vocab = LMGeneralizedVocabulary(vocab)
+
+    t_vector = generalized_vocab.generalized_id_to_extended_vector()(generalized_id)
+
+
+@pytest.mark.parametrize("tokens, expected_id",
+    [
+        (["the", "for_sure_unknown_word"], [6,1])
+    ]
+)
+def test_LMGeneralizedVocabulary__token_to_id_glove(tokens, expected_id):
+    glove = get_vocabulary("glove300")
+    generalized = LMGeneralizedVocabulary(glove)
+    vocab_id = glove.word_to_id_op()(tokens)
+    generalized_id = generalized.vocab_id_to_generalized_id()(vocab_id)
+
+    with tf.Session() as sess:
+        glove.after_session_created_hook_fn(sess)
+        sess.run(tf.global_variables_initializer())
+        sess.run(tf.tables_initializer())
+        r_generalized_id, r_vocab_id = sess.run([generalized_id, vocab_id])
+    
+    assert (r_generalized_id == expected_id).all()
+
+
+@pytest.mark.parametrize("vocab_id, expected_features",
+    [
+        ([-1,0,1,2,3,4], [[1,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0],[0,0,0]])
+    ]
+)
+def test_LMGeneralizedVocabulary__vocab_id_to_vector_features_glove(vocab_id, expected_features):
+    glove = get_vocabulary("glove300")
+    generalized = LMGeneralizedVocabulary(glove)
+    generalized_id = generalized.vocab_id_to_generalized_id()(vocab_id)
+    generalized_vector = generalized.generalized_id_to_extended_vector()(generalized_id)
+
+    with tf.Session() as sess:
+        glove.after_session_created_hook_fn(sess)
+        sess.run(tf.global_variables_initializer())
+        sess.run(tf.tables_initializer())
+        r_generalized_vector, r_generalized_id = sess.run(
+                [
+                    generalized_vector,
+                    generalized_id
+                ]
+            )
+    
+    assert (r_generalized_vector[:,:3] == expected_features).all()
+
+
+@pytest.mark.parametrize("generalized_id, expected_features",
+    [
+        ([1,2,3,6], [[1,0,0],[0,1,0],[0,0,1],[0,0,0]])
+    ]
+)
+def test_LMGeneralizedVocabulary__generalized_id_to_vector_features_glove(generalized_id, expected_features):
+    glove = get_vocabulary("glove300")
+    generalized = LMGeneralizedVocabulary(glove)
+    generalized_vector = generalized.generalized_id_to_extended_vector()(generalized_id)
+
+    with tf.Session() as sess:
+        glove.after_session_created_hook_fn(sess)
+        sess.run(tf.global_variables_initializer())
+        sess.run(tf.tables_initializer())
+        r_generalized_vector = sess.run(generalized_vector)
+    
+    assert (r_generalized_vector[:,:3] == expected_features).all()

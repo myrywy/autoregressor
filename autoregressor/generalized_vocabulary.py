@@ -69,7 +69,17 @@ class GeneralizedVocabulary:
     def vocab_id_to_generalized_id(self):
         def op(id_vocab):
             id_vocab = tf.convert_to_tensor(id_vocab)
-            return id_vocab + self._offset
+            regular_id = id_vocab + self._offset
+
+            if self._vocab.special_unit_to_id(SpecialUnit.OUT_OF_VOCABULARY) is not None:
+                return regular_id
+            else:
+                unknown_vocab_id = tf.ones_like(id_vocab) * self._vocab.get_unknown_word_psudo_id()
+                unknown_generalized_id = tf.ones_like(id_vocab) * self.get_special_unit_id(SpecialUnit.OUT_OF_VOCABULARY)
+
+                is_unknown = tf.equal(id_vocab, unknown_vocab_id)
+
+                return tf.where(is_unknown, unknown_generalized_id, regular_id)
         return op
 
     def generalized_id_to_extended_vector(self):

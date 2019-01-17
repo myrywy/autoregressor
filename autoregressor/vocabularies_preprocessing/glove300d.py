@@ -29,6 +29,7 @@ class Glove300(Vocabulary):
         self._embedding_assigns = defaultdict(list)
         self._embedding_variables = {}
         self._dry_run = dry_run
+        self.OOV_ID = -1
 
     def initialize_embeddings_in_graph(self, graph, session):
         print("initialize_embeddings_in_graph")
@@ -45,7 +46,7 @@ class Glove300(Vocabulary):
         index_path = str(self._index_file_path)
         index = tf.contrib.lookup.index_table_from_file(
             vocabulary_file=index_path,
-            default_value=-1,
+            default_value=self.OOV_ID,
         )
         def op(word):
             word = tf.convert_to_tensor(word, dtype=tf.string)
@@ -90,6 +91,9 @@ class Glove300(Vocabulary):
 
     def get_valid_id_example(self):
         return 1
+
+    def get_unknown_word_psudo_id(self):
+        return self.OOV_ID
     
     def vector_size(self):
         return 300
