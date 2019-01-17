@@ -2,6 +2,7 @@ import argparse
 import logging
 import pickle
 
+import numpy as np
 from pytest import approx
 
 from lm_training_process import eval_lm_on_cached_simple_examples_with_glove_check
@@ -36,9 +37,13 @@ if __name__ == "__main__":
             expected_predictions = pickle.load(expected_file)
         
         for i, (prediction, expected) in enumerate(zip(predictions, expected_predictions)):
-            assert (prediction["predictions_ids"]==expected["predictions_ids"]).all()
-            assert (prediction["predictions_tokens"]==expected["predictions_tokens"]).all()
-            assert (prediction["probabilities"] == expected["probabilities"]).all() # Using approx here is EXTREMALLY inefficient for some reason 
+            try:
+                assert np.allclose(prediction["probabilities"], expected["probabilities"],atol=0.0001,rtol=0) # Using approx here is EXTREMALLY inefficient for some reason 
+                assert (prediction["predictions_ids"]==expected["predictions_ids"]).all()
+                assert (prediction["predictions_tokens"]==expected["predictions_tokens"]).all()
+            except:
+                import pdb; pdb.set_trace()
+                raise
         logger.info("Compared {} examples; results are the same".format(i))
     
     if args.mode == RTestMode.UPDATE:
