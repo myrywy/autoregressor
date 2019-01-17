@@ -329,7 +329,7 @@ def eval_lm_on_cached_simple_examples_with_glove_check(data_dir, model_dir, subs
         hparams=hparams)
     
     def filter_too_long(features, labels):
-        tf.shape(features)[1] <= hparams.max_input_length
+        tf.less_equal(tf.shape(features["inputs"])[1], hparams.max_input_length)
 
     def create_input():
         input_dataset = data.load_training_data()
