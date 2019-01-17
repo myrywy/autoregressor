@@ -1,7 +1,7 @@
 import tensorflow as tf
 
 from data_pipeline import DataPipeline
-from generalized_vocabulary import GeneralizedVocabulary, SpecialUnit
+from generalized_vocabulary import LMGeneralizedVocabulary, SpecialUnit
 
 class LmInputDataPipeline(DataPipeline):
     def __init__(self, vocab, batch_size=20):
@@ -13,15 +13,9 @@ class LmInputDataPipeline(DataPipeline):
             batch_size (int or None): size of batch created by load_data or None - then no batching will be performed
         """
         super(LmInputDataPipeline, self).__init__()
+        self._vocab = vocab
         self.batch_size = batch_size
-        self._vocab_generalized = vocab_generalized = GeneralizedVocabulary(
-                vocab,
-                [
-                    SpecialUnit.START_OF_SEQUENCE,
-                    SpecialUnit.END_OF_SEQUENCE,
-                    SpecialUnit.OUT_OF_VOCABULARY
-                ]
-            )
+        self._vocab_generalized = vocab_generalized = LMGeneralizedVocabulary(vocab)
         self.add_unit_transformation(vocab.word_to_id_op())
         self.add_unit_transformation(vocab_generalized.vocab_id_to_generalized_id())
         self.add_structural_transformation(self.make_input_target_example)
